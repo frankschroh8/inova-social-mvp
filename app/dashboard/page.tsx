@@ -20,7 +20,10 @@ export default function Dashboard() {
     }
 
     setUser(data.user);
-    carregarPosts(data.user.email);
+
+    if (data.user.email) {
+      carregarPosts(data.user.email);
+    }
   }
 
   async function carregarPosts(email: string) {
@@ -41,7 +44,14 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={{ padding: 40, background: "#111", color: "white", minHeight: "100vh" }}>
+    <div
+      style={{
+        padding: 40,
+        background: "#111",
+        color: "white",
+        minHeight: "100vh",
+      }}
+    >
       <h1>🚀 Dashboard Inova Social AI</h1>
 
       <h3>Bem-vindo:</h3>
@@ -68,7 +78,9 @@ export default function Dashboard() {
           }}
         >
           <p>{post.content}</p>
-          <small>{new Date(post.created_at).toLocaleString("pt-BR")}</small>
+          <small>
+            {new Date(post.created_at).toLocaleString("pt-BR")}
+          </small>
         </div>
       ))}
     </div>

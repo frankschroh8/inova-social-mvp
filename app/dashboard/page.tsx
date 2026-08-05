@@ -1,15 +1,51 @@
 "use client";
 
-import Layout from "@/components/layout/Layout";
+import { useEffect, useState } from "react";
+import MetricCard from "@/components/dashboard/cards/MetricCard";
+import { getDashboardData } from "@/services/dashboard";
 
 export default function Dashboard() {
+  const [dados, setDados] = useState({
+    clientes: 0,
+    imoveis: 0,
+    visitas: 0,
+  });
+
+  useEffect(() => {
+    async function carregar() {
+      const dashboard = await getDashboardData();
+      setDados(dashboard);
+    }
+
+    carregar();
+  }, []);
+
   return (
-    <Layout>
+    <main className="p-8">
 
-      <h1>Dashboard</h1>
+      <h1 className="mb-8 text-3xl font-bold">
+        Dashboard
+      </h1>
 
-      <p>Bem-vindo ao Inova Social AI PRO.</p>
+      <div className="grid gap-6 md:grid-cols-3">
 
-    </Layout>
+        <MetricCard
+          titulo="Clientes"
+          valor={dados.clientes}
+        />
+
+        <MetricCard
+          titulo="Imóveis"
+          valor={dados.imoveis}
+        />
+
+        <MetricCard
+          titulo="Visitas"
+          valor={dados.visitas}
+        />
+
+      </div>
+
+    </main>
   );
 }

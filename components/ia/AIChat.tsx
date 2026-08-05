@@ -1,51 +1,52 @@
 "use client";
 
 import { useState } from "react";
+import { perguntarIA } from "@/services/ia";
 
 export default function AIChat() {
-
   const [prompt, setPrompt] = useState("");
+  const [resposta, setResposta] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function enviar() {
-
     if (!prompt) return;
 
-    alert("Em breve enviaremos para a IA:\n\n" + prompt);
+    setLoading(true);
 
+    try {
+      const data = await perguntarIA(prompt);
+      setResposta(data.resposta);
+    } catch {
+      setResposta("Erro ao consultar IA.");
+    }
+
+    setLoading(false);
   }
 
   return (
-
-    <div className="space-y-4">
+    <div className="space-y-6">
 
       <textarea
-
-        className="w-full border rounded-lg p-4"
-
         rows={8}
-
-        placeholder="Ex.: Gere um anúncio para este apartamento..."
-
+        className="w-full rounded-lg border p-4"
+        placeholder="Descreva o que deseja..."
         value={prompt}
-
         onChange={(e) => setPrompt(e.target.value)}
-
       />
 
       <button
-
-        className="rounded-lg bg-black text-white px-6 py-3"
-
         onClick={enviar}
-
+        className="rounded-lg bg-black px-6 py-3 text-white"
       >
-
-        Enviar para IA
-
+        {loading ? "Consultando..." : "Enviar"}
       </button>
 
+      {resposta && (
+        <div className="rounded-xl border bg-gray-50 p-6 whitespace-pre-wrap">
+          {resposta}
+        </div>
+      )}
+
     </div>
-
   );
-
 }

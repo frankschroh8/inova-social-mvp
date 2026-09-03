@@ -6,37 +6,50 @@ import Column from "./Column";
 
 import { listarFunil } from "@/services/funil";
 
+const ETAPAS = [
+  "Novo",
+  "Em atendimento",
+  "Interessado",
+  "Visita agendada",
+  "Proposta",
+  "Fechado",
+];
+
 export default function Board() {
   const [dados, setDados] = useState<any[]>([]);
+  const [carregando, setCarregando] = useState(true);
 
   useEffect(() => {
     carregar();
   }, []);
 
   async function carregar() {
-    const lista = await listarFunil();
-    setDados(lista);
+    try {
+      const lista = await listarFunil();
+      setDados(lista);
+    } finally {
+      setCarregando(false);
+    }
   }
 
-  const status = [
-    "Novo Lead",
-    "Contato",
-    "Visita",
-    "Proposta",
-    "Negociação",
-    "Fechado",
-  ];
+  if (carregando) {
+    return (
+      <div className="rounded-lg border bg-white p-6 text-gray-500">
+        Carregando funil...
+      </div>
+    );
+  }
 
   return (
-    <div className="flex gap-6 overflow-auto">
+    <div className="flex gap-4 overflow-x-auto pb-4">
 
-      {status.map((item) => (
+      {ETAPAS.map((item) => (
 
         <Column
           key={item}
           titulo={item}
           leads={dados.filter(
-            (l) => l.status === item
+            (lead) => lead.etapa === item
           )}
         />
 

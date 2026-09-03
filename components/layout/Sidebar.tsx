@@ -6,6 +6,7 @@ const menus = [
   { nome: "Dashboard", link: "/dashboard" },
   { nome: "Clientes", link: "/clientes" },
   { nome: "Imóveis", link: "/imoveis" },
+  { nome: "Pesquisa de Mercado", link: "/pesquisa-mercado" },
   { nome: "Captação", link: "/captacao" },
   { nome: "Agenda", link: "/agenda" },
   { nome: "IA", link: "/ia" },

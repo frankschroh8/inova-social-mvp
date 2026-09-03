@@ -6,14 +6,23 @@ import { supabase } from "@/lib/supabase";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [carregando, setCarregando] = useState(false);
 
   async function entrar() {
+    if (!email || !senha) {
+      alert("Informe o e-mail e a senha.");
+      return;
+    }
+
+    setCarregando(true);
+
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password: senha,
     });
 
     if (error) {
+      setCarregando(false);
       alert(error.message);
       return;
     }
@@ -60,12 +69,13 @@ export default function Login() {
 
       <button
         onClick={entrar}
+        disabled={carregando}
         style={{
           marginTop: "20px",
           padding: "10px 20px",
         }}
       >
-        Entrar
+        {carregando ? "Entrando..." : "Entrar"}
       </button>
     </div>
   );

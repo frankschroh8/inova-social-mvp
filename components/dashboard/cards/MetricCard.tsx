@@ -2,10 +2,11 @@
 
 interface Props {
   titulo: string;
-  valor: number;
+  valor: number | string;
+  descricao?: string;
 }
 
-export default function MetricCard({ titulo, valor }: Props) {
+export default function MetricCard({ titulo, valor, descricao }: Props) {
   return (
     <div className="rounded-xl border bg-white p-6 shadow-sm">
       <p className="text-sm text-gray-500">{titulo}</p>
@@ -13,6 +14,12 @@ export default function MetricCard({ titulo, valor }: Props) {
       <h2 className="mt-2 text-3xl font-bold">
         {valor}
       </h2>
+
+      {descricao && (
+        <p className="mt-2 text-sm text-gray-500">
+          {descricao}
+        </p>
+      )}
     </div>
   );
 }

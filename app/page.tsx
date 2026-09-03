@@ -102,11 +102,15 @@ export default function Home() {
     setLoadingIA(true);
 
     const { data: userData } = await supabase.auth.getUser();
+    const { data: sessionData } = await supabase.auth.getSession();
 
     const res = await fetch("/api/ia", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(sessionData.session?.access_token
+          ? { Authorization: `Bearer ${sessionData.session.access_token}` }
+          : {}),
       },
       body: JSON.stringify({
         prompt: legenda,
@@ -127,8 +131,15 @@ export default function Home() {
 
   // 💳 ASSINAR PRO
   async function assinarPro() {
+    const { data: sessionData } = await supabase.auth.getSession();
+
     const res = await fetch("/api/checkout", {
       method: "POST",
+      headers: {
+        ...(sessionData.session?.access_token
+          ? { Authorization: `Bearer ${sessionData.session.access_token}` }
+          : {}),
+      },
     });
 
     const data = await res.json();

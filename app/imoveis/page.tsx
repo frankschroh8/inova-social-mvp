@@ -450,25 +450,98 @@ export default function ImoveisPage() {
 
   return (
     <main
-      style={{
-        boxSizing: "border-box",
-        width: "100%",
-        maxWidth: 1100,
-        margin: "0 auto",
-        padding: "32px clamp(16px, 4vw, 40px)",
-      }}
+      className="imoveis-page"
     >
+      <style>
+        {`
+          .imoveis-page {
+            box-sizing: border-box;
+            width: 100%;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 32px 24px;
+          }
+
+          .imoveis-card {
+            box-sizing: border-box;
+            width: 100%;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 24px 28px;
+            margin-top: 24px;
+            background: #fff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+          }
+
+          .imoveis-section {
+            width: 100%;
+            border-top: 1px solid #e5e7eb;
+            margin-top: 24px;
+            padding-top: 22px;
+          }
+
+          .imoveis-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 22px 24px;
+            align-items: start;
+            width: 100%;
+          }
+
+          .imoveis-field {
+            display: block;
+            min-width: 0;
+            color: #374151;
+            font-weight: 600;
+            font-size: 14px;
+          }
+
+          .imoveis-field-full {
+            grid-column: 1 / -1;
+          }
+
+          .imoveis-control {
+            box-sizing: border-box;
+            display: block;
+            width: 100%;
+            min-height: 44px;
+            padding: 10px 12px;
+            margin-top: 6px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            background: #fff;
+          }
+
+          .imoveis-textarea {
+            min-height: 118px;
+            resize: vertical;
+          }
+
+          @media (max-width: 700px) {
+            .imoveis-page {
+              padding: 24px 16px;
+            }
+
+            .imoveis-card {
+              padding: 20px 16px;
+            }
+
+            .imoveis-grid {
+              grid-template-columns: 1fr;
+              gap: 16px;
+            }
+
+            .imoveis-field-full {
+              grid-column: auto;
+            }
+          }
+        `}
+      </style>
+
       <h1 style={{ margin: 0 }}>Cadastro de Imóveis</h1>
 
       <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          padding: "24px clamp(16px, 3vw, 28px)",
-          marginTop: 24,
-          background: "#fff",
-          boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
-        }}
+        className="imoveis-card"
       >
         <h2 style={{ margin: 0 }}>Novo imóvel</h2>
 
@@ -1241,11 +1314,7 @@ function SecaoFormulario({
 }) {
   return (
     <section
-      style={{
-        borderTop: "1px solid #e5e7eb",
-        marginTop: 24,
-        paddingTop: 22,
-      }}
+      className="imoveis-section"
     >
       <h4
         style={{
@@ -1259,12 +1328,7 @@ function SecaoFormulario({
       </h4>
 
       <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",
-          gap: "16px 18px",
-          alignItems: "start",
-        }}
+        className="imoveis-grid"
       >
         {children}
       </div>
@@ -1286,13 +1350,13 @@ function CampoTexto({
   full?: boolean;
 }) {
   return (
-    <label style={full ? campoLargo : campoLabel}>
+    <label className={`imoveis-field${full ? " imoveis-field-full" : ""}`}>
       {label}
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={campoControle}
+        className="imoveis-control"
       />
     </label>
   );
@@ -1310,12 +1374,12 @@ function CampoSelect({
   opcoes: string[][];
 }) {
   return (
-    <label style={campoLabel}>
+    <label className="imoveis-field">
       {label}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={campoControle}
+        className="imoveis-control"
       >
         {opcoes.map(([valorOpcao, rotulo]) => (
           <option key={valorOpcao} value={valorOpcao}>
@@ -1337,42 +1401,14 @@ function CampoArea({
   onChange: (value: string) => void;
 }) {
   return (
-    <label style={campoLargo}>
+    <label className="imoveis-field imoveis-field-full">
       {label}
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={4}
-        style={{
-          ...campoControle,
-          minHeight: 118,
-          resize: "vertical",
-        }}
+        className="imoveis-control imoveis-textarea"
       />
     </label>
   );
 }
-
-const campoLabel = {
-  display: "block",
-  color: "#374151",
-  fontWeight: 600,
-  fontSize: 14,
-} as const;
-
-const campoLargo = {
-  ...campoLabel,
-  gridColumn: "1 / -1",
-} as const;
-
-const campoControle = {
-  boxSizing: "border-box",
-  display: "block",
-  width: "100%",
-  minHeight: 42,
-  padding: "10px 12px",
-  marginTop: 6,
-  border: "1px solid #d1d5db",
-  borderRadius: 8,
-  background: "#fff",
-} as const;

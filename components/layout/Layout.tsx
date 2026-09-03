@@ -17,14 +17,19 @@ export default function Layout({
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
+  const pathname = usePathname() || "";
 
-  const deveMostrarNavegacao =
-    rotasComNavegacao.some(
-      (rota) => pathname === rota || pathname.startsWith(`${rota}/`)
-    ) && pathname !== "/pesquisa-mercado/relatorio";
+  const rotaDoCrm = rotasComNavegacao.some(
+    (rota) => pathname === rota || pathname.startsWith(`${rota}/`)
+  );
 
-  if (!deveMostrarNavegacao) {
+  const rotaSemShell =
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname === "/cadastro" ||
+    pathname === "/pesquisa-mercado/relatorio";
+
+  if (!rotaDoCrm || rotaSemShell) {
     return <>{children}</>;
   }
 

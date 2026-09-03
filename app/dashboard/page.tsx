@@ -49,8 +49,8 @@ export default function Dashboard() {
 
   if (carregando || !dados) {
     return (
-      <main className="min-h-screen bg-gray-50 p-8">
-        <h1 className="mb-8 text-3xl font-bold">
+      <main className="crm-dashboard-page bg-gray-50">
+        <h1 className="mb-8 text-4xl font-bold tracking-tight text-gray-950">
           Dashboard
         </h1>
 
@@ -97,38 +97,21 @@ export default function Dashboard() {
   ];
 
   return (
-    <main className="min-h-screen bg-gray-50 p-8">
+    <main className="crm-dashboard-page bg-gray-50">
 
-      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+      <div className="mb-10">
         <div>
-          <h1 className="text-3xl font-bold">
+          <h1 className="text-4xl font-bold tracking-tight text-gray-950">
             Dashboard
           </h1>
 
-          <p className="mt-2 text-gray-600">
+          <p className="mt-3 max-w-2xl text-base leading-7 text-gray-600">
             Visão gerencial do CRM com base no funil, agenda e histórico.
           </p>
         </div>
-
-        <div className="flex flex-wrap gap-2">
-          {[
-            ["/clientes", "Clientes"],
-            ["/imoveis", "Imóveis"],
-            ["/agenda", "Agenda"],
-            ["/funil", "Funil"],
-          ].map(([href, label]) => (
-            <a
-              key={href}
-              href={href}
-              className="rounded-lg border bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm hover:border-gray-400"
-            >
-              {label}
-            </a>
-          ))}
-        </div>
       </div>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {indicadores.map(([titulo, valor]) => (
           <MetricCard
             key={titulo}
@@ -138,7 +121,7 @@ export default function Dashboard() {
         ))}
       </section>
 
-      <section className="mt-8 grid gap-4 lg:grid-cols-4">
+      <section className="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {taxas.map(([titulo, valor, descricao]) => (
           <MetricCard
             key={titulo}
@@ -149,9 +132,9 @@ export default function Dashboard() {
         ))}
       </section>
 
-      <div className="mt-8 grid gap-6 xl:grid-cols-3">
+      <div className="mt-10 grid gap-6 xl:grid-cols-3">
         <section className="rounded-xl border bg-white p-6 shadow-sm xl:col-span-2">
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-2xl font-semibold text-gray-950">
             Atividades recentes
           </h2>
 
@@ -189,7 +172,7 @@ export default function Dashboard() {
         </section>
 
         <section className="rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-2xl font-semibold text-gray-950">
             Próximas visitas
           </h2>
 
@@ -227,9 +210,9 @@ export default function Dashboard() {
         </section>
       </div>
 
-      <section className="mt-8 rounded-xl border bg-white p-6 shadow-sm">
+      <section className="mt-10 rounded-xl border bg-white p-6 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-2xl font-semibold text-gray-950">
             Resumo do funil
           </h2>
 
@@ -241,11 +224,11 @@ export default function Dashboard() {
           </a>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {dados.resumoFunil.map((item: any) => (
             <div
               key={item.etapa}
-              className="rounded-lg bg-gray-50 p-4 ring-1 ring-gray-200"
+              className="rounded-lg bg-gray-50 p-5 ring-1 ring-gray-200"
             >
               <p className="text-sm font-medium text-gray-600">
                 {item.etapa}

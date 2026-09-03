@@ -518,8 +518,19 @@ export default function ClienteDetalhesPage() {
     setCarregandoMatch(true);
 
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       const response = await fetch(
-        `/api/match?clienteId=${cliente.id}`
+        `/api/match?clienteId=${encodeURIComponent(cliente.id)}`,
+        {
+          headers: session?.access_token
+            ? {
+                Authorization: `Bearer ${session.access_token}`,
+              }
+            : {},
+        }
       );
 
       const resultado = await response.json();

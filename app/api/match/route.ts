@@ -1,4 +1,10 @@
 import { buscarMatches } from "@/services/match";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export async function GET(request: Request) {
   try {
@@ -16,7 +22,46 @@ export async function GET(request: Request) {
       );
     }
 
-    const matches = await buscarMatches(clienteId);
+    const authorization = request.headers.get("authorization");
+
+    if (!authorization?.startsWith("Bearer ")) {
+      return Response.json(
+        {
+          sucesso: false,
+          erro: "Usuário não autenticado.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const token = authorization.replace("Bearer ", "").trim();
+
+    if (!token) {
+      return Response.json(
+        {
+          sucesso: false,
+          erro: "Usuário não autenticado.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return Response.json(
+        {
+          sucesso: false,
+          erro: "Usuário não autenticado.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const matches = await buscarMatches(clienteId, token);
 
     return Response.json({
       sucesso: true,

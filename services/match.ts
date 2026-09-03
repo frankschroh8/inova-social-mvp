@@ -504,7 +504,8 @@ function calcularScore(
 }
 
 export async function buscarMatches(
-  clienteId: string
+  clienteId: string,
+  accessToken?: string
 ): Promise<Match[]> {
 
   console.log(
@@ -516,7 +517,7 @@ export async function buscarMatches(
   // CLIENTE SUPABASE SERVER
   // =========================================================
 
-  const supabase = await createClient();
+  const supabase = await createClient(accessToken);
 
   // =========================================================
   // 1. USUÁRIO LOGADO
@@ -525,7 +526,9 @@ export async function buscarMatches(
   const {
     data: { user },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = accessToken
+    ? await supabase.auth.getUser(accessToken)
+    : await supabase.auth.getUser();
 
   if (authError || !user) {
     console.error(

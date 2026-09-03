@@ -1,12 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 
-export async function createClient() {
-  const headersList = await headers();
-  const authorization = headersList.get("authorization");
-
-  if (authorization?.startsWith("Bearer ")) {
+export async function createClient(accessToken?: string) {
+  if (accessToken) {
     return createSupabaseClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -17,7 +14,7 @@ export async function createClient() {
         },
         global: {
           headers: {
-            Authorization: authorization,
+            Authorization: `Bearer ${accessToken}`,
           },
         },
       }

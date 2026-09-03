@@ -128,3 +128,163 @@
     @apply font-sans;
   }
 }
+
+.crm-shell {
+  display: flex;
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+.crm-sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  width: 260px;
+  min-height: 100vh;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 24px;
+  border-right: 1px solid #1f2937;
+  background: #111827;
+  color: #fff;
+  padding: 22px 18px;
+}
+
+.crm-sidebar-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.crm-sidebar-logo {
+  display: inline-flex;
+  height: 40px;
+  width: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #2563eb;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.crm-sidebar-brand strong,
+.crm-sidebar-brand span {
+  display: block;
+}
+
+.crm-sidebar-brand strong {
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.crm-sidebar-brand span {
+  margin-top: 3px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.crm-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crm-sidebar-link {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+  color: #d1d5db;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 11px 12px;
+  text-decoration: none;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.crm-sidebar-link:hover {
+  background: #1f2937;
+  color: #fff;
+}
+
+.crm-sidebar-link-active {
+  background: #fff;
+  color: #111827;
+}
+
+.crm-sidebar-link-active:hover {
+  background: #fff;
+  color: #111827;
+}
+
+.crm-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.crm-content > main {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.crm-content > main:not(.imoveis-page) {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 28px;
+}
+
+@media (min-width: 1440px) {
+  .crm-content > main:not(.imoveis-page) {
+    max-width: 1360px;
+  }
+}
+
+@media (max-width: 900px) {
+  .crm-shell {
+    display: block;
+  }
+
+  .crm-sidebar {
+    position: sticky;
+    top: 0;
+    min-height: auto;
+    width: 100%;
+    border-right: 0;
+    border-bottom: 1px solid #1f2937;
+    padding: 14px 16px;
+  }
+
+  .crm-sidebar-brand {
+    margin-bottom: 2px;
+  }
+
+  .crm-sidebar-logo {
+    height: 34px;
+    width: 34px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+
+  .crm-sidebar-nav {
+    flex-direction: row;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .crm-sidebar-link {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 9px 11px;
+  }
+
+  .crm-content > main:not(.imoveis-page) {
+    padding: 24px 16px;
+  }
+}

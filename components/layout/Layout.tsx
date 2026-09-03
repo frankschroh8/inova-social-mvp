@@ -1,35 +1,39 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
-import Header from "./Header";
+
+const rotasComNavegacao = [
+  "/dashboard",
+  "/clientes",
+  "/imoveis",
+  "/agenda",
+  "/funil",
+  "/pesquisa-mercado",
+];
 
 export default function Layout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+
+  const deveMostrarNavegacao =
+    rotasComNavegacao.some(
+      (rota) => pathname === rota || pathname.startsWith(`${rota}/`)
+    ) && pathname !== "/pesquisa-mercado/relatorio";
+
+  if (!deveMostrarNavegacao) {
+    return <>{children}</>;
+  }
+
   return (
-    <div
-      style={{
-        display: "flex",
-      }}
-    >
+    <div className="crm-shell">
       <Sidebar />
 
-      <div
-        style={{
-          flex: 1,
-        }}
-      >
-        <Header />
-
-        <main
-          style={{
-            padding: 30,
-          }}
-        >
-          {children}
-        </main>
+      <div className="crm-content">
+        {children}
       </div>
     </div>
   );

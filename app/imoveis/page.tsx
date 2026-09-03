@@ -451,23 +451,26 @@ export default function ImoveisPage() {
   return (
     <main
       style={{
-        padding: 40,
-        maxWidth: 1000,
+        boxSizing: "border-box",
+        width: "100%",
+        maxWidth: 1100,
         margin: "0 auto",
+        padding: "32px clamp(16px, 4vw, 40px)",
       }}
     >
-      <h1>Cadastro de Imóveis</h1>
+      <h1 style={{ margin: 0 }}>Cadastro de Imóveis</h1>
 
       <div
         style={{
-          border: "1px solid #ddd",
-          borderRadius: 10,
-          padding: 20,
-          marginTop: 20,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: "24px clamp(16px, 3vw, 28px)",
+          marginTop: 24,
           background: "#fff",
+          boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
         }}
       >
-        <h2>Novo imóvel</h2>
+        <h2 style={{ margin: 0 }}>Novo imóvel</h2>
 
         <SecaoFormulario titulo="Identificação">
           <CampoTexto
@@ -598,6 +601,7 @@ export default function ImoveisPage() {
           <CampoTexto
             label="Endereço"
             value={formCadastro.endereco}
+            full
             onChange={(valorCampo) =>
               atualizarCampoCadastro("endereco", valorCampo)
             }
@@ -722,6 +726,7 @@ export default function ImoveisPage() {
           <CampoTexto
             label="Foto"
             value={formCadastro.foto}
+            full
             onChange={(valorCampo) =>
               atualizarCampoCadastro("foto", valorCampo)
             }
@@ -730,6 +735,7 @@ export default function ImoveisPage() {
           <CampoTexto
             label="Link QuintoAndar"
             value={formCadastro.quintoandar}
+            full
             onChange={(valorCampo) =>
               atualizarCampoCadastro("quintoandar", valorCampo)
             }
@@ -738,6 +744,7 @@ export default function ImoveisPage() {
           <CampoTexto
             label="Link Órulo"
             value={formCadastro.orulo}
+            full
             onChange={(valorCampo) =>
               atualizarCampoCadastro("orulo", valorCampo)
             }
@@ -775,8 +782,13 @@ export default function ImoveisPage() {
           onClick={salvar}
           disabled={salvando}
           style={{
-            marginTop: 15,
-            padding: "10px 20px",
+            marginTop: 22,
+            padding: "12px 22px",
+            borderRadius: 8,
+            border: "none",
+            background: "#2563eb",
+            color: "#fff",
+            fontWeight: 700,
             cursor: salvando ? "wait" : "pointer",
           }}
         >
@@ -942,6 +954,7 @@ export default function ImoveisPage() {
                 <CampoTexto
                   label="Endereço"
                   value={formEdicao.endereco}
+                  full
                   onChange={(valorCampo) =>
                     atualizarCampo("endereco", valorCampo)
                   }
@@ -1042,6 +1055,7 @@ export default function ImoveisPage() {
                 <CampoTexto
                   label="Foto"
                   value={formEdicao.foto}
+                  full
                   onChange={(valorCampo) =>
                     atualizarCampo("foto", valorCampo)
                   }
@@ -1050,6 +1064,7 @@ export default function ImoveisPage() {
                 <CampoTexto
                   label="Link QuintoAndar"
                   value={formEdicao.quintoandar}
+                  full
                   onChange={(valorCampo) =>
                     atualizarCampo("quintoandar", valorCampo)
                   }
@@ -1058,6 +1073,7 @@ export default function ImoveisPage() {
                 <CampoTexto
                   label="Link Órulo"
                   value={formEdicao.orulo}
+                  full
                   onChange={(valorCampo) =>
                     atualizarCampo("orulo", valorCampo)
                   }
@@ -1227,17 +1243,27 @@ function SecaoFormulario({
     <section
       style={{
         borderTop: "1px solid #e5e7eb",
-        marginTop: 20,
-        paddingTop: 18,
+        marginTop: 24,
+        paddingTop: 22,
       }}
     >
-      <h4 style={{ margin: "0 0 12px" }}>{titulo}</h4>
+      <h4
+        style={{
+          margin: "0 0 14px",
+          color: "#111827",
+          fontSize: 16,
+          fontWeight: 800,
+        }}
+      >
+        {titulo}
+      </h4>
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 12,
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",
+          gap: "16px 18px",
+          alignItems: "start",
         }}
       >
         {children}
@@ -1251,25 +1277,22 @@ function CampoTexto({
   value,
   onChange,
   type = "text",
+  full = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
+  full?: boolean;
 }) {
   return (
-    <label>
+    <label style={full ? campoLargo : campoLabel}>
       {label}
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={{
-          display: "block",
-          width: "100%",
-          padding: 10,
-          marginTop: 5,
-        }}
+        style={campoControle}
       />
     </label>
   );
@@ -1287,17 +1310,12 @@ function CampoSelect({
   opcoes: string[][];
 }) {
   return (
-    <label>
+    <label style={campoLabel}>
       {label}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={{
-          display: "block",
-          width: "100%",
-          padding: 10,
-          marginTop: 5,
-        }}
+        style={campoControle}
       >
         {opcoes.map(([valorOpcao, rotulo]) => (
           <option key={valorOpcao} value={valorOpcao}>
@@ -1319,19 +1337,42 @@ function CampoArea({
   onChange: (value: string) => void;
 }) {
   return (
-    <label style={{ gridColumn: "1 / -1" }}>
+    <label style={campoLargo}>
       {label}
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={4}
         style={{
-          display: "block",
-          width: "100%",
-          padding: 10,
-          marginTop: 5,
+          ...campoControle,
+          minHeight: 118,
+          resize: "vertical",
         }}
       />
     </label>
   );
 }
+
+const campoLabel = {
+  display: "block",
+  color: "#374151",
+  fontWeight: 600,
+  fontSize: 14,
+} as const;
+
+const campoLargo = {
+  ...campoLabel,
+  gridColumn: "1 / -1",
+} as const;
+
+const campoControle = {
+  boxSizing: "border-box",
+  display: "block",
+  width: "100%",
+  minHeight: 42,
+  padding: "10px 12px",
+  marginTop: 6,
+  border: "1px solid #d1d5db",
+  borderRadius: 8,
+  background: "#fff",
+} as const;

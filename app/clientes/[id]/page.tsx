@@ -66,6 +66,30 @@ interface Historico {
   created_at: string;
 }
 
+type StatusProposta =
+  | "enviada"
+  | "em_negociacao"
+  | "aceita"
+  | "recusada";
+
+interface Proposta {
+  id: string;
+  cliente_id: string;
+  imovel_id: string | null;
+  corretor_id: string;
+  valor: number;
+  valor_entrada: number | null;
+  forma_pagamento: string | null;
+  condicoes: string | null;
+  status: StatusProposta | string | null;
+  observacoes: string | null;
+  data_proposta: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  imovel_titulo?: string | null;
+  imovel_codigo?: string | null;
+}
+
 type EstagioInteresse =
   | "interessado"
   | "visita_agendada"
@@ -103,12 +127,16 @@ export default function ClienteDetalhesPage() {
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [historico, setHistorico] = useState<Historico[]>([]);
+  const [propostas, setPropostas] = useState<Proposta[]>([]);
 
   const [carregando, setCarregando] = useState(true);
   const [carregandoMatch, setCarregandoMatch] = useState(false);
   const [salvandoContato, setSalvandoContato] = useState(false);
   const [salvandoCliente, setSalvandoCliente] = useState(false);
   const [salvandoProposta, setSalvandoProposta] = useState(false);
+  const [salvandoStatusProposta, setSalvandoStatusProposta] = useState<
+    string | null
+  >(null);
   const [salvandoEstagio, setSalvandoEstagio] = useState<string | null>(
     null
   );
@@ -145,6 +173,9 @@ export default function ClienteDetalhesPage() {
   const [registrandoProposta, setRegistrandoProposta] = useState(false);
   const [propostaImovelId, setPropostaImovelId] = useState("");
   const [valorProposta, setValorProposta] = useState("");
+  const [valorEntradaProposta, setValorEntradaProposta] = useState("");
+  const [formaPagamentoProposta, setFormaPagamentoProposta] = useState("");
+  const [condicoesProposta, setCondicoesProposta] = useState("");
   const [observacaoProposta, setObservacaoProposta] = useState("");
   const [visitaAgendada, setVisitaAgendada] = useState<{
     matchId: string;
@@ -186,6 +217,46 @@ export default function ClienteDetalhesPage() {
       currency: "BRL",
       maximumFractionDigits: 0,
     });
+  }
+
+  function rotuloStatusProposta(status: string | null | undefined) {
+    switch (status) {
+      case "enviada":
+        return "Enviada";
+      case "em_negociacao":
+        return "Em negociação";
+      case "aceita":
+        return "Aceita";
+      case "recusada":
+        return "Recusada";
+      default:
+        return status || "Sem status";
+    }
+  }
+
+  function corStatusProposta(status: string | null | undefined) {
+    switch (status) {
+      case "enviada":
+        return "#2563eb";
+      case "em_negociacao":
+        return "#d97706";
+      case "aceita":
+        return "#16a34a";
+      case "recusada":
+        return "#6b7280";
+      default:
+        return "#6b7280";
+    }
+  }
+
+  function nomeImovelProposta(proposta: Proposta) {
+    const titulo = proposta.imovel_titulo || "Imóvel";
+
+    if (proposta.imovel_codigo) {
+      return `${titulo} (${proposta.imovel_codigo})`;
+    }
+
+    return titulo;
   }
 
   function formatarFaixaDePreco() {
@@ -337,6 +408,7 @@ export default function ClienteDetalhesPage() {
       preencherFormularioCliente(data);
 
       await carregarHistorico(clienteId);
+      await carregarPropostas(clienteId, user.id);
 
       setCarregando(false);
     } catch (error) {
@@ -364,6 +436,94 @@ export default function ClienteDetalhesPage() {
     }
 
     setHistorico(data || []);
+  }
+
+  async function carregarPropostas(clienteId: string, userId?: string) {
+    let corretorId = userId;
+
+    if (!corretorId) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      corretorId = user?.id;
+    }
+
+    if (!corretorId) {
+      setPropostas([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("propostas")
+      .select(`
+        id,
+        cliente_id,
+        imovel_id,
+        corretor_id,
+        valor,
+        valor_entrada,
+        forma_pagamento,
+        condicoes,
+        status,
+        observacoes,
+        data_proposta,
+        created_at,
+        updated_at
+      `)
+      .eq("cliente_id", clienteId)
+      .eq("corretor_id", corretorId)
+      .is("deleted_at", null)
+      .order("data_proposta", { ascending: false });
+
+    if (error) {
+      console.error("Erro ao carregar propostas:", error);
+      setPropostas([]);
+      return;
+    }
+
+    const imovelIds = Array.from(
+      new Set((data || []).map((item) => item.imovel_id).filter(Boolean))
+    ) as string[];
+    const imoveisPorId = new Map<
+      string,
+      { titulo: string | null; codigo: string | null }
+    >();
+
+    if (imovelIds.length > 0) {
+      const { data: imoveis, error: imoveisError } = await supabase
+        .from("imoveis")
+        .select("id, titulo, codigo")
+        .in("id", imovelIds);
+
+      if (imoveisError) {
+        console.error(
+          "Erro ao carregar imóveis das propostas:",
+          imoveisError
+        );
+      }
+
+      (imoveis || []).forEach((imovel) => {
+        imoveisPorId.set(imovel.id, {
+          titulo: imovel.titulo,
+          codigo: imovel.codigo,
+        });
+      });
+    }
+
+    setPropostas(
+      (data || []).map((proposta) => {
+        const imovel = proposta.imovel_id
+          ? imoveisPorId.get(proposta.imovel_id)
+          : null;
+
+        return {
+          ...proposta,
+          imovel_titulo: imovel?.titulo || null,
+          imovel_codigo: imovel?.codigo || null,
+        };
+      })
+    );
   }
 
   async function salvarCliente() {
@@ -779,6 +939,9 @@ export default function ClienteDetalhesPage() {
 
     const match = matches.find((item) => item.id === propostaImovelId);
     const valorNumerico = Number(valorProposta);
+    const valorEntradaNumerico = valorEntradaProposta
+      ? Number(valorEntradaProposta)
+      : null;
 
     if (!match) {
       alert("Selecione o imóvel da proposta.");
@@ -791,6 +954,15 @@ export default function ClienteDetalhesPage() {
       valorNumerico <= 0
     ) {
       alert("Informe um valor de proposta válido.");
+      return;
+    }
+
+    if (
+      valorEntradaProposta &&
+      (Number.isNaN(valorEntradaNumerico) ||
+        (valorEntradaNumerico !== null && valorEntradaNumerico < 0))
+    ) {
+      alert("Informe um valor de entrada válido.");
       return;
     }
 
@@ -811,6 +983,37 @@ export default function ClienteDetalhesPage() {
         currency: "BRL",
         maximumFractionDigits: 0,
       });
+      const valorEntradaFormatado =
+        valorEntradaNumerico !== null
+          ? valorEntradaNumerico.toLocaleString("pt-BR", {
+              style: "currency",
+              currency: "BRL",
+              maximumFractionDigits: 0,
+            })
+          : null;
+      const agora = new Date().toISOString();
+
+      const { error: propostaError } = await supabase
+        .from("propostas")
+        .insert({
+          cliente_id: cliente.id,
+          imovel_id: match.id,
+          corretor_id: user.id,
+          valor: valorNumerico,
+          valor_entrada: valorEntradaNumerico,
+          forma_pagamento: formaPagamentoProposta.trim() || null,
+          condicoes: condicoesProposta.trim() || null,
+          status: "enviada",
+          observacoes: observacaoProposta.trim() || null,
+          data_proposta: agora,
+          updated_at: agora,
+        });
+
+      if (propostaError) {
+        console.error("Erro ao salvar proposta:", propostaError);
+        alert(`Erro ao salvar proposta: ${propostaError.message}`);
+        return;
+      }
 
       const descricao = [
         "Proposta registrada",
@@ -818,7 +1021,17 @@ export default function ClienteDetalhesPage() {
         `Imóvel: ${match.nome}`,
         `ID do imóvel: ${match.id}`,
         `Valor da proposta: ${valorFormatado}`,
-        `Data: ${new Date().toLocaleString("pt-BR")}`,
+        valorEntradaFormatado
+          ? `Valor de entrada: ${valorEntradaFormatado}`
+          : "",
+        formaPagamentoProposta.trim()
+          ? `Forma de pagamento: ${formaPagamentoProposta.trim()}`
+          : "",
+        condicoesProposta.trim()
+          ? `Condições: ${condicoesProposta.trim()}`
+          : "",
+        "Situação: Enviada",
+        `Data: ${new Date(agora).toLocaleString("pt-BR")}`,
         observacaoProposta.trim()
           ? `Observação: ${observacaoProposta.trim()}`
           : "",
@@ -842,8 +1055,12 @@ export default function ClienteDetalhesPage() {
       setRegistrandoProposta(false);
       setPropostaImovelId("");
       setValorProposta("");
+      setValorEntradaProposta("");
+      setFormaPagamentoProposta("");
+      setCondicoesProposta("");
       setObservacaoProposta("");
 
+      await carregarPropostas(cliente.id, user.id);
       await carregarHistorico(cliente.id);
 
       alert("Proposta registrada com sucesso!");
@@ -857,6 +1074,88 @@ export default function ClienteDetalhesPage() {
       );
     } finally {
       setSalvandoProposta(false);
+    }
+  }
+
+  async function atualizarStatusProposta(
+    proposta: Proposta,
+    novoStatus: StatusProposta
+  ) {
+    if (!cliente) return;
+
+    setSalvandoStatusProposta(`${proposta.id}:${novoStatus}`);
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert("Usuário não está logado.");
+        return;
+      }
+
+      const agora = new Date().toISOString();
+      const { error } = await supabase
+        .from("propostas")
+        .update({
+          status: novoStatus,
+          updated_at: agora,
+        })
+        .eq("id", proposta.id)
+        .eq("corretor_id", user.id)
+        .is("deleted_at", null);
+
+      if (error) {
+        console.error("Erro ao atualizar proposta:", error);
+        alert(`Erro ao atualizar proposta: ${error.message}`);
+        return;
+      }
+
+      const rotulo = rotuloStatusProposta(novoStatus);
+      const descricao = [
+        novoStatus === "aceita"
+          ? "Proposta aceita"
+          : novoStatus === "recusada"
+            ? "Proposta recusada"
+            : `Proposta alterada para ${rotulo}`,
+        `Imóvel: ${nomeImovelProposta(proposta)}`,
+        proposta.imovel_id ? `ID do imóvel: ${proposta.imovel_id}` : "",
+        `Valor da proposta: ${formatarMoeda(proposta.valor)}`,
+        `Situação: ${rotulo}`,
+        `Alterado em: ${new Date(agora).toLocaleString("pt-BR")}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const { error: historicoError } = await supabase
+        .from("historico")
+        .insert({
+          cliente_id: cliente.id,
+          usuario_id: user.id,
+          tipo: "proposta",
+          descricao,
+        });
+
+      if (historicoError) {
+        console.error(
+          "Erro ao registrar alteração da proposta no histórico:",
+          historicoError
+        );
+      }
+
+      await carregarPropostas(cliente.id, user.id);
+      await carregarHistorico(cliente.id);
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Erro ao atualizar proposta."
+      );
+    } finally {
+      setSalvandoStatusProposta(null);
     }
   }
 
@@ -1872,7 +2171,67 @@ export default function ClienteDetalhesPage() {
                   }}
                 />
               </label>
+
+              <label>
+                Valor de entrada
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={valorEntradaProposta}
+                  onChange={(e) =>
+                    setValorEntradaProposta(e.target.value)
+                  }
+                  placeholder="Opcional"
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 5,
+                  }}
+                />
+              </label>
+
+              <label>
+                Forma de pagamento
+                <input
+                  value={formaPagamentoProposta}
+                  onChange={(e) =>
+                    setFormaPagamentoProposta(e.target.value)
+                  }
+                  placeholder="Ex: financiamento, à vista"
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 5,
+                  }}
+                />
+              </label>
             </div>
+
+            <label
+              style={{
+                display: "block",
+                marginTop: 12,
+              }}
+            >
+              Condições
+              <textarea
+                value={condicoesProposta}
+                onChange={(e) =>
+                  setCondicoesProposta(e.target.value)
+                }
+                placeholder="Condições opcionais da negociação"
+                rows={3}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: 10,
+                  marginTop: 5,
+                }}
+              />
+            </label>
 
             <label
               style={{
@@ -1928,6 +2287,9 @@ export default function ClienteDetalhesPage() {
                   setRegistrandoProposta(false);
                   setPropostaImovelId("");
                   setValorProposta("");
+                  setValorEntradaProposta("");
+                  setFormaPagamentoProposta("");
+                  setCondicoesProposta("");
                   setObservacaoProposta("");
                 }}
                 disabled={salvandoProposta}
@@ -2254,6 +2616,177 @@ export default function ClienteDetalhesPage() {
         </button>
       </section>
 
+      {/* PROPOSTAS */}
+
+      <section
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 12,
+          padding: 25,
+          marginTop: 25,
+        }}
+      >
+        <h2>Propostas</h2>
+
+        {propostas.length === 0 ? (
+          <p>Nenhuma proposta estruturada registrada ainda.</p>
+        ) : (
+          <div style={{ display: "grid", gap: 14 }}>
+            {propostas.map((proposta) => (
+              <div
+                key={proposta.id}
+                style={{
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 10,
+                  padding: 16,
+                  background: "#fff",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <strong>{nomeImovelProposta(proposta)}</strong>
+
+                    {proposta.imovel_id && (
+                      <p
+                        style={{
+                          margin: "4px 0 0",
+                          color: "#6b7280",
+                          fontSize: 13,
+                        }}
+                      >
+                        ID do imóvel: {proposta.imovel_id}
+                      </p>
+                    )}
+                  </div>
+
+                  <span
+                    style={{
+                      background: corStatusProposta(proposta.status),
+                      color: "#fff",
+                      borderRadius: 20,
+                      padding: "6px 10px",
+                      fontSize: 13,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {rotuloStatusProposta(proposta.status)}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: 10,
+                    marginTop: 12,
+                  }}
+                >
+                  <CampoCliente
+                    titulo="Valor proposto"
+                    valor={formatarMoeda(proposta.valor) || "-"}
+                  />
+
+                  {proposta.valor_entrada !== null && (
+                    <CampoCliente
+                      titulo="Valor de entrada"
+                      valor={formatarMoeda(proposta.valor_entrada) || "-"}
+                    />
+                  )}
+
+                  {proposta.data_proposta && (
+                    <CampoCliente
+                      titulo="Data"
+                      valor={new Date(
+                        proposta.data_proposta
+                      ).toLocaleString("pt-BR")}
+                    />
+                  )}
+
+                  {proposta.forma_pagamento && (
+                    <CampoCliente
+                      titulo="Forma de pagamento"
+                      valor={proposta.forma_pagamento}
+                    />
+                  )}
+                </div>
+
+                {proposta.condicoes && (
+                  <p style={{ marginTop: 12 }}>
+                    <strong>Condições:</strong> {proposta.condicoes}
+                  </p>
+                )}
+
+                {proposta.observacoes && (
+                  <p style={{ marginTop: 8 }}>
+                    <strong>Observações:</strong> {proposta.observacoes}
+                  </p>
+                )}
+
+                {proposta.status !== "recusada" && (
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: "wrap",
+                      marginTop: 14,
+                    }}
+                  >
+                    {(
+                      [
+                        ["em_negociacao", "Marcar Em negociação"],
+                        ["aceita", "Marcar Aceita"],
+                        ["recusada", "Marcar Recusada"],
+                      ] as [StatusProposta, string][]
+                    ).map(([statusAlvo, rotulo]) => (
+                      <button
+                        key={statusAlvo}
+                        type="button"
+                        onClick={() =>
+                          atualizarStatusProposta(proposta, statusAlvo)
+                        }
+                        disabled={
+                          salvandoStatusProposta !== null ||
+                          proposta.status === statusAlvo
+                        }
+                        style={{
+                          padding: "9px 12px",
+                          borderRadius: 8,
+                          border: "1px solid #d1d5db",
+                          background:
+                            proposta.status === statusAlvo
+                              ? "#f3f4f6"
+                              : "#fff",
+                          color: "#111827",
+                          fontWeight: 600,
+                          cursor:
+                            salvandoStatusProposta !== null
+                              ? "wait"
+                              : "pointer",
+                        }}
+                      >
+                        {salvandoStatusProposta ===
+                        `${proposta.id}:${statusAlvo}`
+                          ? "Salvando..."
+                          : rotulo}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* HISTÓRICO */}
 
       <section
@@ -2316,6 +2849,45 @@ export default function ClienteDetalhesPage() {
         </p>
       </section>
     </main>
+  );
+}
+
+function CampoCliente({
+  titulo,
+  valor,
+}: {
+  titulo: string;
+  valor: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#f9fafb",
+        border: "1px solid #e5e7eb",
+        borderRadius: 8,
+        padding: 12,
+      }}
+    >
+      <div
+        style={{
+          color: "#6b7280",
+          fontSize: 13,
+          fontWeight: 600,
+        }}
+      >
+        {titulo}
+      </div>
+
+      <div
+        style={{
+          marginTop: 4,
+          color: "#111827",
+          fontWeight: 700,
+        }}
+      >
+        {valor}
+      </div>
+    </div>
   );
 }
 

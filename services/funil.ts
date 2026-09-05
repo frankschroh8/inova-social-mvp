@@ -38,6 +38,11 @@ interface AgendaFunil {
   status: string | null;
 }
 
+interface PropostaFunil {
+  cliente_id: string | null;
+  status: string | null;
+}
+
 function extrairEstagio(descricao: string | null) {
   if (!descricao) return null;
 
@@ -100,7 +105,8 @@ export function determinarEtapaComercial(
   cliente: ClienteFunil,
   historicos: HistoricoFunil[],
   agendas: AgendaFunil[],
-  quantidadeMatches: number
+  quantidadeMatches: number,
+  quantidadePropostasAtivas = 0
 ): EtapaFunil {
   const status = normalizarTexto(cliente.status);
 
@@ -114,6 +120,7 @@ export function determinarEtapaComercial(
     .filter(Boolean);
 
   const temProposta =
+    quantidadePropostasAtivas > 0 ||
     status === "proposta" ||
     estagios.includes("proposta") ||
     historicos.some((item) => normalizarTexto(item.tipo) === "proposta");
@@ -186,6 +193,7 @@ export async function listarFunil() {
     { data: historico, error: historicoError },
     { data: matches, error: matchesError },
     { data: agenda, error: agendaError },
+    { data: propostas, error: propostasError },
   ] = await Promise.all([
     supabase
       .from("historico")
@@ -203,6 +211,13 @@ export async function listarFunil() {
       .eq("user_id", user.id)
       .is("deleted_at", null)
       .order("data_inicio", { ascending: false }),
+    supabase
+      .from("propostas")
+      .select("cliente_id, status")
+      .in("cliente_id", clienteIds)
+      .eq("corretor_id", user.id)
+      .is("deleted_at", null)
+      .in("status", ["enviada", "em_negociacao", "aceita"]),
   ]);
 
   if (historicoError) {
@@ -217,9 +232,17 @@ export async function listarFunil() {
     console.error("Erro ao carregar agenda do funil:", agendaError);
   }
 
+  if (propostasError) {
+    console.error(
+      "Erro ao carregar propostas do funil:",
+      propostasError
+    );
+  }
+
   const historicoPorCliente = new Map<string, HistoricoFunil[]>();
   const agendaPorCliente = new Map<string, AgendaFunil[]>();
   const matchesPorCliente = new Map<string, number>();
+  const propostasPorCliente = new Map<string, number>();
 
   (historico || []).forEach((item) => {
     if (!item.cliente_id) return;
@@ -248,10 +271,21 @@ export async function listarFunil() {
     );
   });
 
+  ((propostas || []) as PropostaFunil[]).forEach((item) => {
+    if (!item.cliente_id) return;
+
+    propostasPorCliente.set(
+      item.cliente_id,
+      (propostasPorCliente.get(item.cliente_id) || 0) + 1
+    );
+  });
+
   return (clientes || []).map((cliente) => {
     const historicos = historicoPorCliente.get(cliente.id) || [];
     const agendas = agendaPorCliente.get(cliente.id) || [];
     const quantidadeMatches = matchesPorCliente.get(cliente.id) || 0;
+    const quantidadePropostasAtivas =
+      propostasPorCliente.get(cliente.id) || 0;
     const ultimoHistorico = historicos[0];
     const ultimaAgenda = agendas[0];
     const ultimaData = dataMaisRecente([
@@ -268,7 +302,8 @@ export async function listarFunil() {
         cliente,
         historicos,
         agendas,
-        quantidadeMatches
+        quantidadeMatches,
+        quantidadePropostasAtivas
       ),
       quantidadeMatches,
       ultimaAtividade: textoUltimaAtividade(

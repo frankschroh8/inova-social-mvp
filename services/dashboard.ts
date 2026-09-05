@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { listarFunil } from "@/services/funil";
+import { listarFollowUpsOperacionais } from "@/services/followups";
 
 const ETAPAS = [
   "Novo",
@@ -14,6 +15,17 @@ function percentual(parte: number, total: number) {
   if (total <= 0) return null;
 
   return Math.round((parte / total) * 100);
+}
+
+function followUpsVazios() {
+  return {
+    resumo: {
+      atrasados: 0,
+      hoje: 0,
+      proximos: 0,
+    },
+    itens: [],
+  };
 }
 
 export async function getDashboardData() {
@@ -42,6 +54,7 @@ export async function getDashboardData() {
       },
       atividadesRecentes: [],
       proximasVisitas: [],
+      followUps: followUpsVazios(),
       resumoFunil: ETAPAS.map((etapa) => ({
         etapa,
         total: 0,
@@ -50,6 +63,7 @@ export async function getDashboardData() {
   }
 
   const funil = await listarFunil();
+  const followUps = await listarFollowUpsOperacionais();
   const clienteIds = funil.map((cliente) => cliente.id);
 
   if (clienteIds.length === 0) {
@@ -73,6 +87,7 @@ export async function getDashboardData() {
       },
       atividadesRecentes: [],
       proximasVisitas: [],
+      followUps,
       resumoFunil: ETAPAS.map((etapa) => ({
         etapa,
         total: 0,
@@ -213,6 +228,7 @@ export async function getDashboardData() {
     },
     atividadesRecentes: atividadesRecentes || [],
     proximasVisitas: proximasVisitas || [],
+    followUps,
     resumoFunil,
   };
 }

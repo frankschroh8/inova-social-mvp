@@ -21,6 +21,24 @@ const RESULTADOS_VISITA = [
   "Outro",
 ];
 
+function rotuloFollowUp(situacao: string) {
+  if (situacao === "atrasado") return "Atrasado";
+  if (situacao === "hoje") return "Hoje";
+  return "Próximo";
+}
+
+function classeFollowUp(situacao: string) {
+  if (situacao === "atrasado") {
+    return "bg-red-50 text-red-700 ring-red-200";
+  }
+
+  if (situacao === "hoje") {
+    return "bg-amber-50 text-amber-700 ring-amber-200";
+  }
+
+  return "bg-blue-50 text-blue-700 ring-blue-200";
+}
+
 export default function AgendaCard({ item }: Props) {
   const [reagendando, setReagendando] = useState(false);
   const [editando, setEditando] = useState(false);
@@ -245,6 +263,16 @@ export default function AgendaCard({ item }: Props) {
             <p className="text-sm text-gray-500 mt-2">
               🔄 Status: {item.status}
             </p>
+          )}
+
+          {item.situacaoFollowUp && (
+            <span
+              className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${classeFollowUp(
+                item.situacaoFollowUp
+              )}`}
+            >
+              Follow-up: {rotuloFollowUp(item.situacaoFollowUp)}
+            </span>
           )}
 
           {item.descricao && (

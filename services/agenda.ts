@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { classificarFollowUp } from "@/services/followups";
 
 interface ResultadoVisita {
   cliente_id: string | null;
@@ -92,6 +93,7 @@ export async function listarAgenda() {
     nome: cliente.nome,
     telefone: cliente.telefone,
     status: null,
+    situacaoFollowUp: classificarFollowUp(cliente.proximo_contato),
     descricao: cliente.observacoes,
     data: cliente.proximo_contato,
     origem: "cliente",
@@ -104,6 +106,7 @@ export async function listarAgenda() {
     nome: item.titulo,
     telefone: null,
     status: normalizarStatusCompromisso(item.status),
+    situacaoFollowUp: null,
     descricao: item.descricao,
     data: item.data_inicio,
     origem: "agenda",

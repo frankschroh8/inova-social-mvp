@@ -11,15 +11,28 @@ interface Props {
   item: any;
 }
 
+const RESULTADOS_VISITA = [
+  "Interessado",
+  "Muito interessado",
+  "Sem interesse",
+  "Quer nova visita",
+  "Vai fazer proposta",
+  "Não compareceu",
+  "Outro",
+];
+
 export default function AgendaCard({ item }: Props) {
   const [reagendando, setReagendando] = useState(false);
   const [editando, setEditando] = useState(false);
+  const [registrandoResultado, setRegistrandoResultado] = useState(false);
 
   const [novaData, setNovaData] = useState("");
   const [novoTitulo, setNovoTitulo] = useState(item.titulo || "");
   const [novaDescricao, setNovaDescricao] = useState(
     item.descricao || ""
   );
+  const [resultadoVisita, setResultadoVisita] = useState("");
+  const [observacaoResultado, setObservacaoResultado] = useState("");
 
   const [salvando, setSalvando] = useState(false);
 
@@ -38,6 +51,13 @@ export default function AgendaCard({ item }: Props) {
 
   async function concluir() {
     if (!item.id) return;
+
+    if (item.cliente_id) {
+      setRegistrandoResultado(true);
+      setReagendando(false);
+      setEditando(false);
+      return;
+    }
 
     const confirmar = window.confirm(
       "Deseja marcar este compromisso como concluído?"
@@ -60,6 +80,45 @@ export default function AgendaCard({ item }: Props) {
         error instanceof Error
           ? error.message
           : "Erro ao concluir compromisso."
+      );
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function confirmarResultadoVisita() {
+    if (!item.id) return;
+
+    if (!resultadoVisita) {
+      alert("Selecione o resultado da visita.");
+      return;
+    }
+
+    setSalvando(true);
+
+    try {
+      await concluirCompromisso(item.id, {
+        cliente_id: item.cliente_id,
+        titulo: item.titulo || null,
+        data: item.data || null,
+        resultado: resultadoVisita,
+        observacao: observacaoResultado.trim() || null,
+      });
+
+      alert("Visita concluída e resultado registrado com sucesso!");
+
+      setRegistrandoResultado(false);
+      setResultadoVisita("");
+      setObservacaoResultado("");
+
+      window.location.reload();
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Erro ao registrar resultado da visita."
       );
     } finally {
       setSalvando(false);
@@ -274,6 +333,78 @@ export default function AgendaCard({ item }: Props) {
                   onClick={() => {
                     setReagendando(false);
                     setNovaData("");
+                  }}
+                  disabled={salvando}
+                  className="rounded-lg border px-4 py-2 text-sm"
+                >
+                  Cancelar
+                </button>
+
+              </div>
+
+            </div>
+          )}
+
+          {registrandoResultado && (
+            <div className="mt-4 rounded-lg border p-4 bg-gray-50">
+
+              <h4 className="font-semibold text-gray-900">
+                Resultado da visita
+              </h4>
+
+              <label className="mt-4 block text-sm font-medium mb-2">
+                Resultado
+              </label>
+
+              <select
+                value={resultadoVisita}
+                onChange={(e) =>
+                  setResultadoVisita(e.target.value)
+                }
+                disabled={salvando}
+                className="border rounded-lg p-3 w-full mb-3"
+              >
+                <option value="">Selecione o resultado</option>
+
+                {RESULTADOS_VISITA.map((resultado) => (
+                  <option key={resultado} value={resultado}>
+                    {resultado}
+                  </option>
+                ))}
+              </select>
+
+              <label className="block text-sm font-medium mb-2">
+                Observação
+              </label>
+
+              <textarea
+                value={observacaoResultado}
+                onChange={(e) =>
+                  setObservacaoResultado(e.target.value)
+                }
+                disabled={salvando}
+                rows={4}
+                placeholder="Observações opcionais sobre a visita..."
+                className="border rounded-lg p-3 w-full mb-3"
+              />
+
+              <div className="flex flex-wrap gap-2">
+
+                <button
+                  onClick={confirmarResultadoVisita}
+                  disabled={salvando}
+                  className="rounded-lg bg-green-600 px-4 py-2 text-sm text-white"
+                >
+                  {salvando
+                    ? "Salvando..."
+                    : "Concluir e registrar"}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setRegistrandoResultado(false);
+                    setResultadoVisita("");
+                    setObservacaoResultado("");
                   }}
                   disabled={salvando}
                   className="rounded-lg border px-4 py-2 text-sm"

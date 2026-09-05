@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { listarFunil, type EtapaFunil } from "@/services/funil";
 
 interface Cliente {
   id: string;
@@ -13,6 +14,7 @@ interface Cliente {
   cidade: string | null;
   valor: number | null;
   status: string | null;
+  etapa: EtapaFunil;
 }
 
 interface Match {
@@ -97,28 +99,7 @@ export default function ClientesPage() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("clientes")
-        .select(`
-          id,
-          nome,
-          telefone,
-          interesse,
-          finalidade,
-          bairro,
-          cidade,
-          valor,
-          status
-        `)
-        .eq("user_id", user.id)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Erro ao carregar clientes:", error);
-        alert("Erro ao carregar clientes.");
-        return;
-      }
+      const data = await listarFunil();
 
       setClientes(data || []);
     } finally {
@@ -221,11 +202,20 @@ export default function ClientesPage() {
       case "Em atendimento":
         return "#d97706";
 
+      case "Interessado":
+        return "#2563eb";
+
+      case "Visita agendada":
+        return "#d97706";
+
       case "Negociação":
         return "#7c3aed";
 
       case "Proposta":
         return "#0891b2";
+
+      case "Fechado":
+        return "#16a34a";
 
       case "Cliente":
         return "#16a34a";
@@ -648,6 +638,7 @@ export default function ClientesPage() {
         const matchesSelecionados = (resultados || []).filter((match) =>
           idsSelecionados.includes(match.id)
         );
+        const etapaComercial = cliente.etapa;
 
         return (
           <div
@@ -694,10 +685,10 @@ export default function ClientesPage() {
                 )}
               </div>
 
-              {cliente.status && (
+              {etapaComercial && (
                 <span
                   style={{
-                    background: corStatus(cliente.status),
+                    background: corStatus(etapaComercial),
                     color: "#fff",
                     padding: "6px 11px",
                     borderRadius: 20,
@@ -705,7 +696,7 @@ export default function ClientesPage() {
                     fontWeight: 600,
                   }}
                 >
-                  {formatarStatus(cliente.status)}
+                  {formatarStatus(etapaComercial)}
                 </span>
               )}
             </div>

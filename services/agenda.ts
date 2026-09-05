@@ -1,5 +1,53 @@
 import { supabase } from "@/lib/supabase";
 
+interface ResultadoVisita {
+  cliente_id: string | null;
+  titulo: string | null;
+  data: string | null;
+  resultado: string;
+  observacao?: string | null;
+}
+
+function estagioPorResultado(resultado: string) {
+  if (resultado === "Vai fazer proposta") {
+    return {
+      tipo: "proposta",
+      estagio: "proposta",
+    };
+  }
+
+  if (
+    resultado === "Interessado" ||
+    resultado === "Muito interessado"
+  ) {
+    return {
+      tipo: "interesse_imovel",
+      estagio: "interessado",
+    };
+  }
+
+  return null;
+}
+
+function formatarDataHistorico(data: string | null) {
+  if (!data) return "Data não informada";
+
+  return new Date(data).toLocaleString("pt-BR");
+}
+
+function normalizarStatusCompromisso(status: string | null) {
+  if (
+    status === "agendado" ||
+    status === "concluido" ||
+    status === "cancelado" ||
+    status === "reagendado"
+  ) {
+    return status;
+  }
+
+  return null;
+}
+
 export async function listarAgenda() {
   const {
     data: { user },
@@ -43,7 +91,7 @@ export async function listarAgenda() {
     titulo: cliente.nome,
     nome: cliente.nome,
     telefone: cliente.telefone,
-    status: cliente.status,
+    status: null,
     descricao: cliente.observacoes,
     data: cliente.proximo_contato,
     origem: "cliente",
@@ -55,7 +103,7 @@ export async function listarAgenda() {
     titulo: item.titulo,
     nome: item.titulo,
     telefone: null,
-    status: item.status,
+    status: normalizarStatusCompromisso(item.status),
     descricao: item.descricao,
     data: item.data_inicio,
     origem: "agenda",
@@ -102,7 +150,10 @@ export async function criarCompromisso(compromisso: any) {
   return data;
 }
 
-export async function concluirCompromisso(compromissoId: string) {
+export async function concluirCompromisso(
+  compromissoId: string,
+  resultadoVisita?: ResultadoVisita
+) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -126,6 +177,63 @@ export async function concluirCompromisso(compromissoId: string) {
     throw new Error(
       `Error completing appointment: ${error.message}`
     );
+  }
+
+  if (resultadoVisita?.cliente_id) {
+    const dataVisita = formatarDataHistorico(resultadoVisita.data);
+    const observacao = resultadoVisita.observacao?.trim();
+
+    const descricao = [
+      `Resultado: ${resultadoVisita.resultado}`,
+      `Compromisso: ${resultadoVisita.titulo || "Compromisso"}`,
+      `Data da visita: ${dataVisita}`,
+      observacao ? `Observação: ${observacao}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const { error: historicoError } = await supabase
+      .from("historico")
+      .insert({
+        cliente_id: resultadoVisita.cliente_id,
+        usuario_id: user.id,
+        tipo: "resultado_visita",
+        descricao,
+      });
+
+    if (historicoError) {
+      throw new Error(
+        `Error saving visit result: ${historicoError.message}`
+      );
+    }
+
+    const sinalFunil = estagioPorResultado(resultadoVisita.resultado);
+
+    if (sinalFunil) {
+      const { error: estagioError } = await supabase
+        .from("historico")
+        .insert({
+          cliente_id: resultadoVisita.cliente_id,
+          usuario_id: user.id,
+          tipo: sinalFunil.tipo,
+          descricao: [
+            `Estágio: ${sinalFunil.estagio}`,
+            `Status: ${resultadoVisita.resultado}`,
+            `Compromisso: ${resultadoVisita.titulo || "Compromisso"}`,
+            `Data da visita: ${dataVisita}`,
+            observacao ? `Observação: ${observacao}` : "",
+            `Alterado em: ${new Date().toLocaleString("pt-BR")}`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        });
+
+      if (estagioError) {
+        throw new Error(
+          `Error saving funnel stage: ${estagioError.message}`
+        );
+      }
+    }
   }
 
   return data;

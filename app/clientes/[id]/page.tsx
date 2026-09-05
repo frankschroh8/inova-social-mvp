@@ -108,6 +108,7 @@ export default function ClienteDetalhesPage() {
   const [carregandoMatch, setCarregandoMatch] = useState(false);
   const [salvandoContato, setSalvandoContato] = useState(false);
   const [salvandoCliente, setSalvandoCliente] = useState(false);
+  const [salvandoProposta, setSalvandoProposta] = useState(false);
   const [salvandoEstagio, setSalvandoEstagio] = useState<string | null>(
     null
   );
@@ -141,6 +142,10 @@ export default function ClienteDetalhesPage() {
 
   const [descricaoContato, setDescricaoContato] = useState("");
   const [proximoContato, setProximoContato] = useState("");
+  const [registrandoProposta, setRegistrandoProposta] = useState(false);
+  const [propostaImovelId, setPropostaImovelId] = useState("");
+  const [valorProposta, setValorProposta] = useState("");
+  const [observacaoProposta, setObservacaoProposta] = useState("");
   const [visitaAgendada, setVisitaAgendada] = useState<{
     matchId: string;
     data: string;
@@ -661,22 +666,37 @@ export default function ClienteDetalhesPage() {
 
   function obterEstagioAtual(imovelId: string) {
     const registro = historico.find((item) => {
-      if (item.tipo !== "interesse_imovel" || !item.descricao) {
+      if (!item.descricao) {
         return false;
       }
 
-      return item.descricao.includes(`ID do imóvel: ${imovelId}`);
+      const tipo = item.tipo || "";
+      const estaRelacionadoAoImovel = item.descricao.includes(
+        `ID do imóvel: ${imovelId}`
+      );
+
+      return (
+        estaRelacionadoAoImovel &&
+        (tipo === "interesse_imovel" || tipo === "proposta")
+      );
     });
 
     if (!registro?.descricao) {
       return null;
     }
 
+    if (registro.tipo === "proposta") {
+      return "proposta";
+    }
+
     const encontrado = registro.descricao.match(
-      /Estágio: (interessado|visita_agendada|proposta|sem_interesse)/
+      /Estágio: (interessado|visita_agendada|proposta|sem_interesse)/i
     );
 
-    return (encontrado?.[1] as EstagioInteresse | undefined) || null;
+    return (
+      (encontrado?.[1]?.toLowerCase() as EstagioInteresse | undefined) ||
+      null
+    );
   }
 
   function formatarEnderecoImovel(match: Match) {
@@ -751,6 +771,212 @@ export default function ClienteDetalhesPage() {
       );
     } finally {
       setSalvandoEstagio(null);
+    }
+  }
+
+  async function registrarProposta() {
+    if (!cliente) return;
+
+    const match = matches.find((item) => item.id === propostaImovelId);
+    const valorNumerico = Number(valorProposta);
+
+    if (!match) {
+      alert("Selecione o imóvel da proposta.");
+      return;
+    }
+
+    if (
+      !valorProposta ||
+      Number.isNaN(valorNumerico) ||
+      valorNumerico <= 0
+    ) {
+      alert("Informe um valor de proposta válido.");
+      return;
+    }
+
+    setSalvandoProposta(true);
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert("Usuário não está logado.");
+        return;
+      }
+
+      const valorFormatado = valorNumerico.toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        maximumFractionDigits: 0,
+      });
+
+      const descricao = [
+        "Proposta registrada",
+        "Estágio: proposta",
+        `Imóvel: ${match.nome}`,
+        `ID do imóvel: ${match.id}`,
+        `Valor da proposta: ${valorFormatado}`,
+        `Data: ${new Date().toLocaleString("pt-BR")}`,
+        observacaoProposta.trim()
+          ? `Observação: ${observacaoProposta.trim()}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const { error } = await supabase.from("historico").insert({
+        cliente_id: cliente.id,
+        usuario_id: user.id,
+        tipo: "proposta",
+        descricao,
+      });
+
+      if (error) {
+        console.error("Erro ao registrar proposta:", error);
+        alert(`Erro ao registrar proposta: ${error.message}`);
+        return;
+      }
+
+      setRegistrandoProposta(false);
+      setPropostaImovelId("");
+      setValorProposta("");
+      setObservacaoProposta("");
+
+      await carregarHistorico(cliente.id);
+
+      alert("Proposta registrada com sucesso!");
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Erro ao registrar proposta."
+      );
+    } finally {
+      setSalvandoProposta(false);
+    }
+  }
+
+  function abrirWhatsAppCliente() {
+    if (!cliente) return;
+
+    const telefoneLimpo = (cliente.telefone || "").replace(/\D/g, "");
+
+    if (!telefoneLimpo) {
+      alert("Cliente sem telefone cadastrado.");
+      return;
+    }
+
+    const mensagem = encodeURIComponent(
+      `Olá, ${cliente.nome}! Tudo bem?`
+    );
+
+    window.open(
+      `https://wa.me/55${telefoneLimpo}?text=${mensagem}`,
+      "_blank"
+    );
+  }
+
+  function iniciarAgendamentoRapido() {
+    if (matches.length === 0) {
+      alert(
+        "Carregue os imóveis compatíveis antes de agendar uma visita."
+      );
+      return;
+    }
+
+    iniciarAgendamentoVisita(matches[0]);
+    document
+      .getElementById("match-imoveis")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function abrirRegistroProposta() {
+    if (matches.length === 0) {
+      alert(
+        "Carregue os imóveis compatíveis antes de registrar uma proposta."
+      );
+      return;
+    }
+
+    setRegistrandoProposta(true);
+    document
+      .getElementById("match-imoveis")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function fecharNegocio() {
+    if (!cliente) return;
+
+    const confirmar = window.confirm(
+      "Deseja marcar este cliente como Fechado?"
+    );
+
+    if (!confirmar) return;
+
+    setSalvandoCliente(true);
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert("Usuário não está logado.");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("clientes")
+        .update({
+          status: "Fechado",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", cliente.id)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Erro ao fechar negócio:", error);
+        alert(`Erro ao fechar negócio: ${error.message}`);
+        return;
+      }
+
+      const { error: historicoError } = await supabase
+        .from("historico")
+        .insert({
+          cliente_id: cliente.id,
+          usuario_id: user.id,
+          tipo: "fechamento",
+          descricao: `Cliente marcado como Fechado em ${new Date().toLocaleString("pt-BR")}.`,
+        });
+
+      if (historicoError) {
+        console.error(
+          "Erro ao registrar fechamento no histórico:",
+          historicoError
+        );
+      }
+
+      setCliente(data);
+      preencherFormularioCliente(data);
+      await carregarHistorico(cliente.id);
+
+      alert("Negócio marcado como fechado.");
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Erro ao fechar negócio."
+      );
+    } finally {
+      setSalvandoCliente(false);
     }
   }
 
@@ -1474,9 +1700,93 @@ export default function ClienteDetalhesPage() {
         )}
       </section>
 
+      {/* AÇÕES RÁPIDAS */}
+
+      <section
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 12,
+          padding: 25,
+          marginTop: 25,
+        }}
+      >
+        <h2>Ações rápidas</h2>
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+          }}
+        >
+          <button
+            type="button"
+            onClick={abrirWhatsAppCliente}
+            style={{
+              padding: "12px 18px",
+              borderRadius: 8,
+              border: "none",
+              background: "#16a34a",
+              color: "#fff",
+              fontWeight: 700,
+            }}
+          >
+            WhatsApp
+          </button>
+
+          <button
+            type="button"
+            onClick={iniciarAgendamentoRapido}
+            style={{
+              padding: "12px 18px",
+              borderRadius: 8,
+              border: "1px solid #d97706",
+              background: "#fff7ed",
+              color: "#92400e",
+              fontWeight: 700,
+            }}
+          >
+            Agendar visita
+          </button>
+
+          <button
+            type="button"
+            onClick={abrirRegistroProposta}
+            style={{
+              padding: "12px 18px",
+              borderRadius: 8,
+              border: "1px solid #7c3aed",
+              background: "#7c3aed",
+              color: "#fff",
+              fontWeight: 700,
+            }}
+          >
+            Registrar proposta
+          </button>
+
+          <button
+            type="button"
+            onClick={fecharNegocio}
+            disabled={salvandoCliente}
+            style={{
+              padding: "12px 18px",
+              borderRadius: 8,
+              border: "1px solid #111827",
+              background: "#111827",
+              color: "#fff",
+              fontWeight: 700,
+              cursor: salvandoCliente ? "wait" : "pointer",
+            }}
+          >
+            Fechar negócio
+          </button>
+        </div>
+      </section>
+
       {/* MATCH */}
 
       <section
+        id="match-imoveis"
         style={{
           border: "1px solid #ddd",
           borderRadius: 12,
@@ -1498,6 +1808,143 @@ export default function ClienteDetalhesPage() {
             ? "🔎 Procurando imóveis..."
             : "🎯 Encontrar imóveis"}
         </button>
+
+        {registrandoProposta && (
+          <div
+            style={{
+              marginTop: 18,
+              padding: 18,
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              background: "#f9fafb",
+            }}
+          >
+            <strong>Registrar proposta</strong>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 12,
+                marginTop: 12,
+              }}
+            >
+              <label>
+                Imóvel
+                <select
+                  value={propostaImovelId}
+                  onChange={(e) =>
+                    setPropostaImovelId(e.target.value)
+                  }
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 5,
+                  }}
+                >
+                  <option value="">Selecione o imóvel</option>
+                  {matches.map((match) => (
+                    <option key={match.id} value={match.id}>
+                      {match.nome} - {match.score}% de compatibilidade
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Valor da proposta
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={valorProposta}
+                  onChange={(e) =>
+                    setValorProposta(e.target.value)
+                  }
+                  placeholder="Ex: 750000"
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 5,
+                  }}
+                />
+              </label>
+            </div>
+
+            <label
+              style={{
+                display: "block",
+                marginTop: 12,
+              }}
+            >
+              Observação
+              <textarea
+                value={observacaoProposta}
+                onChange={(e) =>
+                  setObservacaoProposta(e.target.value)
+                }
+                placeholder="Observação opcional"
+                rows={3}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: 10,
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                marginTop: 12,
+              }}
+            >
+              <button
+                type="button"
+                onClick={registrarProposta}
+                disabled={salvandoProposta}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "#7c3aed",
+                  color: "#fff",
+                  fontWeight: 600,
+                  cursor: salvandoProposta ? "wait" : "pointer",
+                }}
+              >
+                {salvandoProposta ? "Salvando..." : "Salvar proposta"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setRegistrandoProposta(false);
+                  setPropostaImovelId("");
+                  setValorProposta("");
+                  setObservacaoProposta("");
+                }}
+                disabled={salvandoProposta}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  color: "#111827",
+                  fontWeight: 600,
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
 
         {matches.length > 0 &&
           matches.map((match) => {

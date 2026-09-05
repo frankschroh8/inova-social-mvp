@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 
-type EtapaFunil =
+export type EtapaFunil =
   | "Novo"
   | "Em atendimento"
   | "Interessado"
@@ -15,6 +15,7 @@ interface ClienteFunil {
   interesse: string | null;
   finalidade: string | null;
   bairro: string | null;
+  cidade: string | null;
   valor: number | null;
   status: string | null;
   created_at: string | null;
@@ -41,10 +42,14 @@ function extrairEstagio(descricao: string | null) {
   if (!descricao) return null;
 
   const encontrado = descricao.match(
-    /Estágio: (interessado|visita_agendada|proposta|sem_interesse)/
+    /Estágio: (interessado|visita_agendada|proposta|sem_interesse)/i
   );
 
-  return encontrado?.[1] || null;
+  return encontrado?.[1]?.toLowerCase() || null;
+}
+
+function normalizarTexto(texto: string | null | undefined) {
+  return (texto || "").toLowerCase().trim();
 }
 
 function dataMaisRecente(datas: (string | null | undefined)[]) {
@@ -91,13 +96,13 @@ function textoUltimaAtividade(
   return "Sem atividade registrada";
 }
 
-function determinarEtapa(
+export function determinarEtapaComercial(
   cliente: ClienteFunil,
   historicos: HistoricoFunil[],
   agendas: AgendaFunil[],
   quantidadeMatches: number
 ): EtapaFunil {
-  const status = (cliente.status || "").toLowerCase();
+  const status = normalizarTexto(cliente.status);
 
   if (status === "fechado") {
     return "Fechado";
@@ -108,7 +113,12 @@ function determinarEtapa(
     .map((item) => extrairEstagio(item.descricao))
     .filter(Boolean);
 
-  if (estagios.includes("proposta")) {
+  const temProposta =
+    status === "proposta" ||
+    estagios.includes("proposta") ||
+    historicos.some((item) => normalizarTexto(item.tipo) === "proposta");
+
+  if (temProposta) {
     return "Proposta";
   }
 
@@ -151,6 +161,7 @@ export async function listarFunil() {
       interesse,
       finalidade,
       bairro,
+      cidade,
       valor,
       status,
       created_at,
@@ -253,7 +264,7 @@ export async function listarFunil() {
 
     return {
       ...cliente,
-      etapa: determinarEtapa(
+      etapa: determinarEtapaComercial(
         cliente,
         historicos,
         agendas,

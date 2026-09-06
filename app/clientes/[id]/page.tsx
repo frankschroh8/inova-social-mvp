@@ -70,7 +70,35 @@ type StatusProposta =
   | "enviada"
   | "em_negociacao"
   | "aceita"
-  | "recusada";
+  | "recusada"
+  | "cancelada";
+
+type TipoEventoProposta =
+  | "proposta_inicial"
+  | "contraproposta_cliente"
+  | "contraproposta_proprietario"
+  | "aceita"
+  | "recusada"
+  | "cancelada";
+
+type OrigemEventoProposta =
+  | "cliente"
+  | "proprietario"
+  | "corretor"
+  | "sistema";
+
+interface PropostaEvento {
+  id: string;
+  proposta_id: string;
+  tipo: TipoEventoProposta | string;
+  origem: OrigemEventoProposta | string;
+  valor: number | null;
+  valor_entrada: number | null;
+  forma_pagamento: string | null;
+  condicoes: string | null;
+  observacao: string | null;
+  created_at: string;
+}
 
 interface Proposta {
   id: string;
@@ -88,6 +116,7 @@ interface Proposta {
   updated_at: string | null;
   imovel_titulo?: string | null;
   imovel_codigo?: string | null;
+  eventos?: PropostaEvento[];
 }
 
 type EstagioInteresse =
@@ -113,7 +142,7 @@ const ESTAGIOS_INTERESSE: {
   },
   {
     valor: "proposta",
-    rotulo: "Proposta",
+    rotulo: "Fazer proposta",
     cor: "#7c3aed",
   },
   {
@@ -122,6 +151,8 @@ const ESTAGIOS_INTERESSE: {
     cor: "#6b7280",
   },
 ];
+
+const STATUS_PROPOSTA_ATIVA = ["enviada", "em_negociacao", "aceita"];
 
 export default function ClienteDetalhesPage() {
   const [cliente, setCliente] = useState<Cliente | null>(null);
@@ -134,6 +165,7 @@ export default function ClienteDetalhesPage() {
   const [salvandoContato, setSalvandoContato] = useState(false);
   const [salvandoCliente, setSalvandoCliente] = useState(false);
   const [salvandoProposta, setSalvandoProposta] = useState(false);
+  const [salvandoContraproposta, setSalvandoContraproposta] = useState(false);
   const [salvandoStatusProposta, setSalvandoStatusProposta] = useState<
     string | null
   >(null);
@@ -172,11 +204,26 @@ export default function ClienteDetalhesPage() {
   const [proximoContato, setProximoContato] = useState("");
   const [registrandoProposta, setRegistrandoProposta] = useState(false);
   const [propostaImovelId, setPropostaImovelId] = useState("");
+  const [propostaImovelFixado, setPropostaImovelFixado] = useState(false);
   const [valorProposta, setValorProposta] = useState("");
   const [valorEntradaProposta, setValorEntradaProposta] = useState("");
   const [formaPagamentoProposta, setFormaPagamentoProposta] = useState("");
   const [condicoesProposta, setCondicoesProposta] = useState("");
   const [observacaoProposta, setObservacaoProposta] = useState("");
+  const [contrapropostaAbertaId, setContrapropostaAbertaId] = useState<
+    string | null
+  >(null);
+  const [origemContraproposta, setOrigemContraproposta] =
+    useState<"cliente" | "proprietario">("proprietario");
+  const [valorContraproposta, setValorContraproposta] = useState("");
+  const [valorEntradaContraproposta, setValorEntradaContraproposta] =
+    useState("");
+  const [formaPagamentoContraproposta, setFormaPagamentoContraproposta] =
+    useState("");
+  const [condicoesContraproposta, setCondicoesContraproposta] =
+    useState("");
+  const [observacaoContraproposta, setObservacaoContraproposta] =
+    useState("");
   const [visitaAgendada, setVisitaAgendada] = useState<{
     matchId: string;
     data: string;
@@ -229,6 +276,8 @@ export default function ClienteDetalhesPage() {
         return "Aceita";
       case "recusada":
         return "Recusada";
+      case "cancelada":
+        return "Cancelada";
       default:
         return status || "Sem status";
     }
@@ -244,9 +293,49 @@ export default function ClienteDetalhesPage() {
         return "#16a34a";
       case "recusada":
         return "#6b7280";
+      case "cancelada":
+        return "#6b7280";
       default:
         return "#6b7280";
     }
+  }
+
+  function rotuloEventoProposta(evento: PropostaEvento) {
+    if (evento.tipo === "proposta_inicial") {
+      return "Cliente ofereceu";
+    }
+
+    if (evento.tipo === "contraproposta_cliente") {
+      return "Cliente contrapropôs";
+    }
+
+    if (evento.tipo === "contraproposta_proprietario") {
+      return "Proprietário contrapropôs";
+    }
+
+    if (evento.tipo === "aceita") {
+      return "Proposta aceita";
+    }
+
+    if (evento.tipo === "recusada") {
+      return "Proposta recusada";
+    }
+
+    if (evento.tipo === "cancelada") {
+      return "Proposta cancelada";
+    }
+
+    return evento.tipo || "Evento";
+  }
+
+  function limparFormularioContraproposta() {
+    setContrapropostaAbertaId(null);
+    setOrigemContraproposta("proprietario");
+    setValorContraproposta("");
+    setValorEntradaContraproposta("");
+    setFormaPagamentoContraproposta("");
+    setCondicoesContraproposta("");
+    setObservacaoContraproposta("");
   }
 
   function nomeImovelProposta(proposta: Proposta) {
@@ -485,10 +574,12 @@ export default function ClienteDetalhesPage() {
     const imovelIds = Array.from(
       new Set((data || []).map((item) => item.imovel_id).filter(Boolean))
     ) as string[];
+    const propostaIds = (data || []).map((item) => item.id);
     const imoveisPorId = new Map<
       string,
       { titulo: string | null; codigo: string | null }
     >();
+    const eventosPorProposta = new Map<string, PropostaEvento[]>();
 
     if (imovelIds.length > 0) {
       const { data: imoveis, error: imoveisError } = await supabase
@@ -511,6 +602,40 @@ export default function ClienteDetalhesPage() {
       });
     }
 
+    if (propostaIds.length > 0) {
+      const { data: eventos, error: eventosError } = await supabase
+        .from("proposta_eventos")
+        .select(`
+          id,
+          proposta_id,
+          tipo,
+          origem,
+          valor,
+          valor_entrada,
+          forma_pagamento,
+          condicoes,
+          observacao,
+          created_at
+        `)
+        .in("proposta_id", propostaIds)
+        .eq("corretor_id", corretorId)
+        .order("created_at", { ascending: true });
+
+      if (eventosError) {
+        console.error(
+          "Erro ao carregar eventos das propostas:",
+          eventosError
+        );
+      }
+
+      ((eventos || []) as PropostaEvento[]).forEach((evento) => {
+        eventosPorProposta.set(evento.proposta_id, [
+          ...(eventosPorProposta.get(evento.proposta_id) || []),
+          evento,
+        ]);
+      });
+    }
+
     setPropostas(
       (data || []).map((proposta) => {
         const imovel = proposta.imovel_id
@@ -521,6 +646,7 @@ export default function ClienteDetalhesPage() {
           ...proposta,
           imovel_titulo: imovel?.titulo || null,
           imovel_codigo: imovel?.codigo || null,
+          eventos: eventosPorProposta.get(proposta.id) || [],
         };
       })
     );
@@ -978,6 +1104,34 @@ export default function ClienteDetalhesPage() {
         return;
       }
 
+      const { data: propostaAtiva, error: propostaAtivaError } =
+        await supabase
+          .from("propostas")
+          .select("id")
+          .eq("cliente_id", cliente.id)
+          .eq("imovel_id", match.id)
+          .eq("corretor_id", user.id)
+          .is("deleted_at", null)
+          .in("status", STATUS_PROPOSTA_ATIVA)
+          .limit(1)
+          .maybeSingle();
+
+      if (propostaAtivaError) {
+        console.error("Erro ao verificar proposta ativa:", propostaAtivaError);
+        alert(
+          `Erro ao verificar negociação ativa: ${propostaAtivaError.message}`
+        );
+        return;
+      }
+
+      if (propostaAtiva) {
+        alert("Já existe uma negociação ativa para este imóvel.");
+        document
+          .getElementById("propostas-cliente")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+
       const valorFormatado = valorNumerico.toLocaleString("pt-BR", {
         style: "currency",
         currency: "BRL",
@@ -993,7 +1147,7 @@ export default function ClienteDetalhesPage() {
           : null;
       const agora = new Date().toISOString();
 
-      const { error: propostaError } = await supabase
+      const { data: propostaCriada, error: propostaError } = await supabase
         .from("propostas")
         .insert({
           cliente_id: cliente.id,
@@ -1007,11 +1161,43 @@ export default function ClienteDetalhesPage() {
           observacoes: observacaoProposta.trim() || null,
           data_proposta: agora,
           updated_at: agora,
-        });
+        })
+        .select("id")
+        .single();
 
       if (propostaError) {
         console.error("Erro ao salvar proposta:", propostaError);
         alert(`Erro ao salvar proposta: ${propostaError.message}`);
+        return;
+      }
+
+      if (!propostaCriada?.id) {
+        alert("Proposta salva, mas não foi possível identificar o registro.");
+        return;
+      }
+
+      const { error: eventoError } = await supabase
+        .from("proposta_eventos")
+        .insert({
+          proposta_id: propostaCriada.id,
+          corretor_id: user.id,
+          tipo: "proposta_inicial",
+          origem: "cliente",
+          valor: valorNumerico,
+          valor_entrada: valorEntradaNumerico,
+          forma_pagamento: formaPagamentoProposta.trim() || null,
+          condicoes: condicoesProposta.trim() || null,
+          observacao: observacaoProposta.trim() || null,
+        });
+
+      if (eventoError) {
+        console.error(
+          "Erro ao registrar evento da proposta:",
+          eventoError
+        );
+        alert(
+          `Proposta salva, mas houve erro ao registrar a linha do tempo: ${eventoError.message}`
+        );
         return;
       }
 
@@ -1052,13 +1238,7 @@ export default function ClienteDetalhesPage() {
         return;
       }
 
-      setRegistrandoProposta(false);
-      setPropostaImovelId("");
-      setValorProposta("");
-      setValorEntradaProposta("");
-      setFormaPagamentoProposta("");
-      setCondicoesProposta("");
-      setObservacaoProposta("");
+      limparFormularioProposta();
 
       await carregarPropostas(cliente.id, user.id);
       await carregarHistorico(cliente.id);
@@ -1113,12 +1293,35 @@ export default function ClienteDetalhesPage() {
       }
 
       const rotulo = rotuloStatusProposta(novoStatus);
+      const { error: eventoError } = await supabase
+        .from("proposta_eventos")
+        .insert({
+          proposta_id: proposta.id,
+          corretor_id: user.id,
+          tipo: novoStatus,
+          origem: "corretor",
+          valor: proposta.valor,
+          valor_entrada: proposta.valor_entrada,
+          forma_pagamento: proposta.forma_pagamento,
+          condicoes: proposta.condicoes,
+          observacao: null,
+        });
+
+      if (eventoError) {
+        console.error(
+          "Erro ao registrar evento da proposta:",
+          eventoError
+        );
+      }
+
       const descricao = [
         novoStatus === "aceita"
           ? "Proposta aceita"
           : novoStatus === "recusada"
             ? "Proposta recusada"
-            : `Proposta alterada para ${rotulo}`,
+            : novoStatus === "cancelada"
+              ? "Negociação cancelada"
+              : `Proposta alterada para ${rotulo}`,
         `Imóvel: ${nomeImovelProposta(proposta)}`,
         proposta.imovel_id ? `ID do imóvel: ${proposta.imovel_id}` : "",
         `Valor da proposta: ${formatarMoeda(proposta.valor)}`,
@@ -1159,6 +1362,157 @@ export default function ClienteDetalhesPage() {
     }
   }
 
+  async function salvarContraproposta(proposta: Proposta) {
+    if (!cliente) return;
+
+    const valorNumerico = Number(valorContraproposta);
+    const valorEntradaNumerico = valorEntradaContraproposta
+      ? Number(valorEntradaContraproposta)
+      : null;
+
+    if (
+      !valorContraproposta ||
+      Number.isNaN(valorNumerico) ||
+      valorNumerico <= 0
+    ) {
+      alert("Informe um valor válido para a contraproposta.");
+      return;
+    }
+
+    if (
+      valorEntradaContraproposta &&
+      (Number.isNaN(valorEntradaNumerico) ||
+        (valorEntradaNumerico !== null && valorEntradaNumerico < 0))
+    ) {
+      alert("Informe um valor de entrada válido.");
+      return;
+    }
+
+    setSalvandoContraproposta(true);
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert("Usuário não está logado.");
+        return;
+      }
+
+      const tipoEvento =
+        origemContraproposta === "cliente"
+          ? "contraproposta_cliente"
+          : "contraproposta_proprietario";
+      const agora = new Date().toISOString();
+
+      const { error: eventoError } = await supabase
+        .from("proposta_eventos")
+        .insert({
+          proposta_id: proposta.id,
+          corretor_id: user.id,
+          tipo: tipoEvento,
+          origem: origemContraproposta,
+          valor: valorNumerico,
+          valor_entrada: valorEntradaNumerico,
+          forma_pagamento: formaPagamentoContraproposta.trim() || null,
+          condicoes: condicoesContraproposta.trim() || null,
+          observacao: observacaoContraproposta.trim() || null,
+        });
+
+      if (eventoError) {
+        console.error(
+          "Erro ao registrar contraproposta:",
+          eventoError
+        );
+        alert(`Erro ao registrar contraproposta: ${eventoError.message}`);
+        return;
+      }
+
+      const { error: propostaError } = await supabase
+        .from("propostas")
+        .update({
+          valor: valorNumerico,
+          valor_entrada: valorEntradaNumerico,
+          forma_pagamento: formaPagamentoContraproposta.trim() || null,
+          condicoes: condicoesContraproposta.trim() || null,
+          observacoes: observacaoContraproposta.trim() || null,
+          status: "em_negociacao",
+          updated_at: agora,
+        })
+        .eq("id", proposta.id)
+        .eq("corretor_id", user.id)
+        .is("deleted_at", null);
+
+      if (propostaError) {
+        console.error("Erro ao atualizar proposta:", propostaError);
+        alert(
+          `Contraproposta registrada, mas houve erro ao atualizar a negociação: ${propostaError.message}`
+        );
+        return;
+      }
+
+      const valorFormatado = valorNumerico.toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        maximumFractionDigits: 0,
+      });
+      const origem =
+        origemContraproposta === "cliente" ? "Cliente" : "Proprietário";
+      const descricao = [
+        `${origem} registrou contraproposta`,
+        `Imóvel: ${nomeImovelProposta(proposta)}`,
+        proposta.imovel_id ? `ID do imóvel: ${proposta.imovel_id}` : "",
+        `Valor atual: ${valorFormatado}`,
+        valorEntradaNumerico !== null
+          ? `Valor de entrada: ${formatarMoeda(valorEntradaNumerico)}`
+          : "",
+        formaPagamentoContraproposta.trim()
+          ? `Forma de pagamento: ${formaPagamentoContraproposta.trim()}`
+          : "",
+        condicoesContraproposta.trim()
+          ? `Condições: ${condicoesContraproposta.trim()}`
+          : "",
+        observacaoContraproposta.trim()
+          ? `Observação: ${observacaoContraproposta.trim()}`
+          : "",
+        `Registrado em: ${new Date(agora).toLocaleString("pt-BR")}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const { error: historicoError } = await supabase
+        .from("historico")
+        .insert({
+          cliente_id: cliente.id,
+          usuario_id: user.id,
+          tipo: "proposta",
+          descricao,
+        });
+
+      if (historicoError) {
+        console.error(
+          "Erro ao registrar contraproposta no histórico:",
+          historicoError
+        );
+      }
+
+      limparFormularioContraproposta();
+      await carregarPropostas(cliente.id, user.id);
+      await carregarHistorico(cliente.id);
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Erro ao registrar contraproposta."
+      );
+    } finally {
+      setSalvandoContraproposta(false);
+    }
+  }
+
   function abrirWhatsAppCliente() {
     if (!cliente) return;
 
@@ -1193,12 +1547,45 @@ export default function ClienteDetalhesPage() {
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function abrirRegistroProposta() {
+  function limparFormularioProposta() {
+    setRegistrandoProposta(false);
+    setPropostaImovelId("");
+    setPropostaImovelFixado(false);
+    setValorProposta("");
+    setValorEntradaProposta("");
+    setFormaPagamentoProposta("");
+    setCondicoesProposta("");
+    setObservacaoProposta("");
+  }
+
+  function abrirRegistroProposta(match?: Match) {
     if (matches.length === 0) {
       alert(
         "Carregue os imóveis compatíveis antes de registrar uma proposta."
       );
       return;
+    }
+
+    if (match) {
+      const propostaAtiva = propostas.find(
+        (proposta) =>
+          proposta.imovel_id === match.id &&
+          STATUS_PROPOSTA_ATIVA.includes(proposta.status || "")
+      );
+
+      if (propostaAtiva) {
+        alert("Já existe uma negociação ativa para este imóvel.");
+        document
+          .getElementById("propostas-cliente")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+
+      setPropostaImovelId(match.id);
+      setPropostaImovelFixado(true);
+    } else {
+      setPropostaImovelId("");
+      setPropostaImovelFixado(false);
     }
 
     setRegistrandoProposta(true);
@@ -1375,6 +1762,10 @@ export default function ClienteDetalhesPage() {
       </main>
     );
   }
+
+  const imovelPropostaSelecionado = matches.find(
+    (match) => match.id === propostaImovelId
+  );
 
   return (
     <main
@@ -2050,7 +2441,7 @@ export default function ClienteDetalhesPage() {
 
           <button
             type="button"
-            onClick={abrirRegistroProposta}
+            onClick={() => abrirRegistroProposta()}
             style={{
               padding: "12px 18px",
               borderRadius: 8,
@@ -2118,7 +2509,19 @@ export default function ClienteDetalhesPage() {
               background: "#f9fafb",
             }}
           >
-            <strong>Registrar proposta</strong>
+            <strong>Nova proposta</strong>
+
+            {propostaImovelFixado && imovelPropostaSelecionado && (
+              <p
+                style={{
+                  margin: "8px 0 0",
+                  color: "#374151",
+                  fontWeight: 600,
+                }}
+              >
+                Imóvel: {imovelPropostaSelecionado.nome}
+              </p>
+            )}
 
             <div
               style={{
@@ -2129,28 +2532,30 @@ export default function ClienteDetalhesPage() {
                 marginTop: 12,
               }}
             >
-              <label>
-                Imóvel
-                <select
-                  value={propostaImovelId}
-                  onChange={(e) =>
-                    setPropostaImovelId(e.target.value)
-                  }
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    padding: 10,
-                    marginTop: 5,
-                  }}
-                >
-                  <option value="">Selecione o imóvel</option>
-                  {matches.map((match) => (
-                    <option key={match.id} value={match.id}>
-                      {match.nome} - {match.score}% de compatibilidade
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {!propostaImovelFixado && (
+                <label>
+                  Imóvel
+                  <select
+                    value={propostaImovelId}
+                    onChange={(e) =>
+                      setPropostaImovelId(e.target.value)
+                    }
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      padding: 10,
+                      marginTop: 5,
+                    }}
+                  >
+                    <option value="">Selecione o imóvel</option>
+                    {matches.map((match) => (
+                      <option key={match.id} value={match.id}>
+                        {match.nome} - {match.score}% de compatibilidade
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
               <label>
                 Valor da proposta
@@ -2283,15 +2688,7 @@ export default function ClienteDetalhesPage() {
 
               <button
                 type="button"
-                onClick={() => {
-                  setRegistrandoProposta(false);
-                  setPropostaImovelId("");
-                  setValorProposta("");
-                  setValorEntradaProposta("");
-                  setFormaPagamentoProposta("");
-                  setCondicoesProposta("");
-                  setObservacaoProposta("");
-                }}
+                onClick={limparFormularioProposta}
                 disabled={salvandoProposta}
                 style={{
                   padding: "9px 12px",
@@ -2375,6 +2772,11 @@ export default function ClienteDetalhesPage() {
                       onClick={() => {
                         if (opcao.valor === "visita_agendada") {
                           iniciarAgendamentoVisita(match);
+                          return;
+                        }
+
+                        if (opcao.valor === "proposta") {
+                          abrirRegistroProposta(match);
                           return;
                         }
 
@@ -2619,6 +3021,7 @@ export default function ClienteDetalhesPage() {
       {/* PROPOSTAS */}
 
       <section
+        id="propostas-cliente"
         style={{
           border: "1px solid #ddd",
           borderRadius: 12,
@@ -2731,7 +3134,259 @@ export default function ClienteDetalhesPage() {
                   </p>
                 )}
 
-                {proposta.status !== "recusada" && (
+                <div style={{ marginTop: 16 }}>
+                  <h3 style={{ margin: "0 0 10px", fontSize: 16 }}>
+                    Histórico da negociação
+                  </h3>
+
+                  {!proposta.eventos || proposta.eventos.length === 0 ? (
+                    <p style={{ color: "#6b7280", margin: 0 }}>
+                      Nenhuma interação estruturada registrada ainda.
+                    </p>
+                  ) : (
+                    <div style={{ display: "grid", gap: 10 }}>
+                      {proposta.eventos.map((evento) => (
+                        <div
+                          key={evento.id}
+                          style={{
+                            borderLeft: "3px solid #e5e7eb",
+                            paddingLeft: 12,
+                          }}
+                        >
+                          <strong>{rotuloEventoProposta(evento)}</strong>
+
+                          {evento.valor !== null && (
+                            <p style={{ margin: "4px 0 0" }}>
+                              Valor: {formatarMoeda(evento.valor)}
+                            </p>
+                          )}
+
+                          {evento.valor_entrada !== null && (
+                            <p style={{ margin: "4px 0 0" }}>
+                              Entrada:{" "}
+                              {formatarMoeda(evento.valor_entrada)}
+                            </p>
+                          )}
+
+                          {evento.forma_pagamento && (
+                            <p style={{ margin: "4px 0 0" }}>
+                              Forma de pagamento:{" "}
+                              {evento.forma_pagamento}
+                            </p>
+                          )}
+
+                          {evento.condicoes && (
+                            <p style={{ margin: "4px 0 0" }}>
+                              Condições: {evento.condicoes}
+                            </p>
+                          )}
+
+                          {evento.observacao && (
+                            <p style={{ margin: "4px 0 0" }}>
+                              Observação: {evento.observacao}
+                            </p>
+                          )}
+
+                          <small style={{ color: "#6b7280" }}>
+                            {new Date(
+                              evento.created_at
+                            ).toLocaleString("pt-BR")}
+                          </small>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {contrapropostaAbertaId === proposta.id && (
+                  <div
+                    style={{
+                      marginTop: 16,
+                      padding: 15,
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      background: "#f9fafb",
+                    }}
+                  >
+                    <strong>Registrar contraproposta</strong>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit, minmax(180px, 1fr))",
+                        gap: 10,
+                        marginTop: 12,
+                      }}
+                    >
+                      <label>
+                        Origem
+                        <select
+                          value={origemContraproposta}
+                          onChange={(e) =>
+                            setOrigemContraproposta(
+                              e.target.value as "cliente" | "proprietario"
+                            )
+                          }
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            padding: 10,
+                            marginTop: 5,
+                          }}
+                        >
+                          <option value="cliente">Cliente</option>
+                          <option value="proprietario">Proprietário</option>
+                        </select>
+                      </label>
+
+                      <label>
+                        Valor
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={valorContraproposta}
+                          onChange={(e) =>
+                            setValorContraproposta(e.target.value)
+                          }
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            padding: 10,
+                            marginTop: 5,
+                          }}
+                        />
+                      </label>
+
+                      <label>
+                        Valor de entrada
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={valorEntradaContraproposta}
+                          onChange={(e) =>
+                            setValorEntradaContraproposta(e.target.value)
+                          }
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            padding: 10,
+                            marginTop: 5,
+                          }}
+                        />
+                      </label>
+
+                      <label>
+                        Forma de pagamento
+                        <input
+                          value={formaPagamentoContraproposta}
+                          onChange={(e) =>
+                            setFormaPagamentoContraproposta(e.target.value)
+                          }
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            padding: 10,
+                            marginTop: 5,
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    <label
+                      style={{
+                        display: "block",
+                        marginTop: 12,
+                      }}
+                    >
+                      Condições
+                      <textarea
+                        value={condicoesContraproposta}
+                        onChange={(e) =>
+                          setCondicoesContraproposta(e.target.value)
+                        }
+                        rows={3}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: 10,
+                          marginTop: 5,
+                        }}
+                      />
+                    </label>
+
+                    <label
+                      style={{
+                        display: "block",
+                        marginTop: 12,
+                      }}
+                    >
+                      Observação
+                      <textarea
+                        value={observacaoContraproposta}
+                        onChange={(e) =>
+                          setObservacaoContraproposta(e.target.value)
+                        }
+                        rows={3}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: 10,
+                          marginTop: 5,
+                        }}
+                      />
+                    </label>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        marginTop: 12,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => salvarContraproposta(proposta)}
+                        disabled={salvandoContraproposta}
+                        style={{
+                          padding: "9px 12px",
+                          borderRadius: 8,
+                          border: "none",
+                          background: "#111827",
+                          color: "#fff",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {salvandoContraproposta
+                          ? "Salvando..."
+                          : "Salvar contraproposta"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={limparFormularioContraproposta}
+                        disabled={salvandoContraproposta}
+                        style={{
+                          padding: "9px 12px",
+                          borderRadius: 8,
+                          border: "1px solid #d1d5db",
+                          background: "#fff",
+                          color: "#111827",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {proposta.status !== "recusada" &&
+                  proposta.status !== "aceita" &&
+                  proposta.status !== "cancelada" && (
                   <div
                     style={{
                       display: "flex",
@@ -2740,19 +3395,64 @@ export default function ClienteDetalhesPage() {
                       marginTop: 14,
                     }}
                   >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setContrapropostaAbertaId(proposta.id);
+                        setOrigemContraproposta("proprietario");
+                        setValorContraproposta(
+                          proposta.valor ? String(proposta.valor) : ""
+                        );
+                        setValorEntradaContraproposta(
+                          proposta.valor_entrada !== null
+                            ? String(proposta.valor_entrada)
+                            : ""
+                        );
+                        setFormaPagamentoContraproposta(
+                          proposta.forma_pagamento || ""
+                        );
+                        setCondicoesContraproposta(
+                          proposta.condicoes || ""
+                        );
+                        setObservacaoContraproposta("");
+                      }}
+                      disabled={salvandoContraproposta}
+                      style={{
+                        padding: "9px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #111827",
+                        background: "#111827",
+                        color: "#fff",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Registrar contraproposta
+                    </button>
+
                     {(
                       [
-                        ["em_negociacao", "Marcar Em negociação"],
-                        ["aceita", "Marcar Aceita"],
-                        ["recusada", "Marcar Recusada"],
+                        ["aceita", "Aceitar proposta"],
+                        ["recusada", "Recusar proposta"],
+                        ["cancelada", "Cancelar negociação"],
                       ] as [StatusProposta, string][]
                     ).map(([statusAlvo, rotulo]) => (
                       <button
                         key={statusAlvo}
                         type="button"
-                        onClick={() =>
-                          atualizarStatusProposta(proposta, statusAlvo)
-                        }
+                        onClick={() => {
+                          const mensagemConfirmacao =
+                            statusAlvo === "aceita"
+                              ? "Confirma o aceite desta proposta?"
+                              : statusAlvo === "recusada"
+                                ? "Confirma a recusa desta proposta?"
+                                : "Confirma o cancelamento desta negociação?";
+
+                          if (!window.confirm(mensagemConfirmacao)) {
+                            return;
+                          }
+
+                          atualizarStatusProposta(proposta, statusAlvo);
+                        }}
                         disabled={
                           salvandoStatusProposta !== null ||
                           proposta.status === statusAlvo

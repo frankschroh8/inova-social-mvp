@@ -47,6 +47,25 @@ export interface Imovel {
   destaque?: boolean;
 }
 
+export interface ImovelSelecao {
+  id: string;
+  titulo: string;
+  codigo: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  endereco: string | null;
+  numero: string | null;
+  proprietario: string | null;
+  status: string | null;
+}
+
+function sanitizarTermoBusca(termo: string) {
+  return termo
+    .trim()
+    .replace(/[%,()]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
 export async function listarImoveis() {
   const { data, error } = await supabase
     .from("imoveis")
@@ -56,6 +75,46 @@ export async function listarImoveis() {
   if (error) throw error;
 
   return data;
+}
+
+export async function buscarImoveisParaSelecao(termo: string) {
+  const termoBusca = sanitizarTermoBusca(termo);
+
+  if (termoBusca.length < 2) {
+    return [];
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Usuario nao autenticado.");
+  }
+
+  const filtroTexto = [
+    `codigo.ilike.%${termoBusca}%`,
+    `titulo.ilike.%${termoBusca}%`,
+    `bairro.ilike.%${termoBusca}%`,
+    `endereco.ilike.%${termoBusca}%`,
+    `proprietario.ilike.%${termoBusca}%`,
+  ].join(",");
+
+  const { data, error } = await supabase
+    .from("imoveis")
+    .select(
+      "id, titulo, codigo, bairro, cidade, endereco, numero, proprietario, status"
+    )
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .eq("status", "disponivel")
+    .or(filtroTexto)
+    .order("titulo", { ascending: true })
+    .limit(10);
+
+  if (error) throw error;
+
+  return (data || []) as ImovelSelecao[];
 }
 
 export async function buscarImovel(id: string) {

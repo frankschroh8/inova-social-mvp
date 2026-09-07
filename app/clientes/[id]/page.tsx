@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { criarCompromisso } from "@/services/agenda";
+import { ImovelSearchSelect } from "@/components/imoveis/ImovelSearchSelect";
+import type { ImovelSelecao } from "@/services/imoveis";
 
 interface Cliente {
   id: string;
@@ -31,17 +33,22 @@ interface Cliente {
   filhos: number | null;
 }
 
-interface Match {
+interface ImovelAcao {
   id: string;
   nome: string;
-  score: number;
-  pontosObtidos?: number;
-  pontosPossiveis?: number;
-  detalhesScore?: DetalheScore[];
+  codigo?: string | null;
+  score?: number;
   bairro?: string | null;
   cidade?: string | null;
   endereco?: string | null;
   numero?: string | null;
+}
+
+interface Match extends ImovelAcao {
+  score: number;
+  pontosObtidos?: number;
+  pontosPossiveis?: number;
+  detalhesScore?: DetalheScore[];
 }
 
 type StatusDetalheScore =
@@ -205,6 +212,8 @@ export default function ClienteDetalhesPage() {
   const [registrandoProposta, setRegistrandoProposta] = useState(false);
   const [propostaImovelId, setPropostaImovelId] = useState("");
   const [propostaImovelFixado, setPropostaImovelFixado] = useState(false);
+  const [propostaImovelSelecionado, setPropostaImovelSelecionado] =
+    useState<ImovelAcao | null>(null);
   const [valorProposta, setValorProposta] = useState("");
   const [valorEntradaProposta, setValorEntradaProposta] = useState("");
   const [formaPagamentoProposta, setFormaPagamentoProposta] = useState("");
@@ -225,7 +234,8 @@ export default function ClienteDetalhesPage() {
   const [observacaoContraproposta, setObservacaoContraproposta] =
     useState("");
   const [visitaAgendada, setVisitaAgendada] = useState<{
-    matchId: string;
+    matchId: string | null;
+    imovel: ImovelAcao | null;
     data: string;
     hora: string;
     observacao: string;
@@ -997,8 +1007,32 @@ export default function ClienteDetalhesPage() {
     return [rua, localizacao].filter(Boolean).join(" | ");
   }
 
+  function formatarEnderecoImovelAcao(imovel: ImovelAcao) {
+    const rua = [imovel.endereco, imovel.numero]
+      .filter(Boolean)
+      .join(", ");
+
+    const localizacao = [imovel.bairro, imovel.cidade]
+      .filter(Boolean)
+      .join(" - ");
+
+    return [rua, localizacao].filter(Boolean).join(" | ");
+  }
+
+  function imovelSelecaoParaAcao(imovel: ImovelSelecao): ImovelAcao {
+    return {
+      id: imovel.id,
+      nome: imovel.titulo,
+      codigo: imovel.codigo,
+      bairro: imovel.bairro,
+      cidade: imovel.cidade,
+      endereco: imovel.endereco,
+      numero: imovel.numero,
+    };
+  }
+
   async function registrarEstagioInteresse(
-    match: Match,
+    match: ImovelAcao,
     estagio: EstagioInteresse,
     detalhes: string[] = []
   ) {
@@ -1021,7 +1055,7 @@ export default function ClienteDetalhesPage() {
         `Status: ${rotuloEstagioInteresse(estagio)}`,
         `Imóvel: ${match.nome}`,
         `ID do imóvel: ${match.id}`,
-        `Score: ${match.score}%`,
+        typeof match.score === "number" ? `Score: ${match.score}%` : "",
         ...detalhes,
         `Alterado em: ${new Date().toLocaleString("pt-BR")}`,
       ].join("\n");
@@ -1063,13 +1097,13 @@ export default function ClienteDetalhesPage() {
   async function registrarProposta() {
     if (!cliente) return;
 
-    const match = matches.find((item) => item.id === propostaImovelId);
+    const imovel = propostaImovelSelecionado;
     const valorNumerico = Number(valorProposta);
     const valorEntradaNumerico = valorEntradaProposta
       ? Number(valorEntradaProposta)
       : null;
 
-    if (!match) {
+    if (!imovel) {
       alert("Selecione o imóvel da proposta.");
       return;
     }
@@ -1109,7 +1143,7 @@ export default function ClienteDetalhesPage() {
           .from("propostas")
           .select("id")
           .eq("cliente_id", cliente.id)
-          .eq("imovel_id", match.id)
+          .eq("imovel_id", imovel.id)
           .eq("corretor_id", user.id)
           .is("deleted_at", null)
           .in("status", STATUS_PROPOSTA_ATIVA)
@@ -1149,11 +1183,11 @@ export default function ClienteDetalhesPage() {
 
       const { data: propostaCriada, error: propostaError } = await supabase
         .from("propostas")
-        .insert({
-          cliente_id: cliente.id,
-          imovel_id: match.id,
-          corretor_id: user.id,
-          valor: valorNumerico,
+          .insert({
+            cliente_id: cliente.id,
+            imovel_id: imovel.id,
+            corretor_id: user.id,
+            valor: valorNumerico,
           valor_entrada: valorEntradaNumerico,
           forma_pagamento: formaPagamentoProposta.trim() || null,
           condicoes: condicoesProposta.trim() || null,
@@ -1204,8 +1238,8 @@ export default function ClienteDetalhesPage() {
       const descricao = [
         "Proposta registrada",
         "Estágio: proposta",
-        `Imóvel: ${match.nome}`,
-        `ID do imóvel: ${match.id}`,
+        `Imóvel: ${imovel.nome}`,
+        `ID do imóvel: ${imovel.id}`,
         `Valor da proposta: ${valorFormatado}`,
         valorEntradaFormatado
           ? `Valor de entrada: ${valorEntradaFormatado}`
@@ -1534,16 +1568,15 @@ export default function ClienteDetalhesPage() {
   }
 
   function iniciarAgendamentoRapido() {
-    if (matches.length === 0) {
-      alert(
-        "Carregue os imóveis compatíveis antes de agendar uma visita."
-      );
-      return;
-    }
-
-    iniciarAgendamentoVisita(matches[0]);
+    setVisitaAgendada({
+      matchId: null,
+      imovel: null,
+      data: "",
+      hora: "",
+      observacao: "",
+    });
     document
-      .getElementById("match-imoveis")
+      .getElementById("acoes-rapidas")
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -1551,6 +1584,7 @@ export default function ClienteDetalhesPage() {
     setRegistrandoProposta(false);
     setPropostaImovelId("");
     setPropostaImovelFixado(false);
+    setPropostaImovelSelecionado(null);
     setValorProposta("");
     setValorEntradaProposta("");
     setFormaPagamentoProposta("");
@@ -1559,13 +1593,6 @@ export default function ClienteDetalhesPage() {
   }
 
   function abrirRegistroProposta(match?: Match) {
-    if (matches.length === 0) {
-      alert(
-        "Carregue os imóveis compatíveis antes de registrar uma proposta."
-      );
-      return;
-    }
-
     if (match) {
       const propostaAtiva = propostas.find(
         (proposta) =>
@@ -1583,9 +1610,11 @@ export default function ClienteDetalhesPage() {
 
       setPropostaImovelId(match.id);
       setPropostaImovelFixado(true);
+      setPropostaImovelSelecionado(match);
     } else {
       setPropostaImovelId("");
       setPropostaImovelFixado(false);
+      setPropostaImovelSelecionado(null);
     }
 
     setRegistrandoProposta(true);
@@ -1669,14 +1698,21 @@ export default function ClienteDetalhesPage() {
   function iniciarAgendamentoVisita(match: Match) {
     setVisitaAgendada({
       matchId: match.id,
+      imovel: match,
       data: "",
       hora: "",
       observacao: "",
     });
   }
 
-  async function salvarAgendamentoVisita(match: Match) {
+  async function salvarAgendamentoVisita() {
     if (!cliente || !visitaAgendada) return;
+    const imovel = visitaAgendada.imovel;
+
+    if (!imovel) {
+      alert("Selecione o imóvel da visita.");
+      return;
+    }
 
     if (!visitaAgendada.data) {
       alert("Informe a data da visita.");
@@ -1697,19 +1733,19 @@ export default function ClienteDetalhesPage() {
       return;
     }
 
-    setSalvandoEstagio(`${match.id}:visita_agendada`);
+    setSalvandoEstagio(`${imovel.id}:visita_agendada`);
 
     try {
-      const endereco = formatarEnderecoImovel(match);
+      const endereco = formatarEnderecoImovelAcao(imovel);
       const dataHoraFormatada = dataInicio.toLocaleString("pt-BR");
 
       await criarCompromisso({
         cliente_id: cliente.id,
-        titulo: `Visita - ${cliente.nome} - ${match.nome}`,
+        titulo: `Visita - ${cliente.nome} - ${imovel.nome}`,
         descricao: [
           `Cliente: ${cliente.nome}`,
-          `Imóvel: ${match.nome}`,
-          `ID do imóvel: ${match.id}`,
+          `Imóvel: ${imovel.nome}`,
+          `ID do imóvel: ${imovel.id}`,
           `Data e horário: ${dataHoraFormatada}`,
           endereco ? `Endereço: ${endereco}` : "",
           visitaAgendada.observacao.trim()
@@ -1722,7 +1758,7 @@ export default function ClienteDetalhesPage() {
         status: "agendado",
       });
 
-      await registrarEstagioInteresse(match, "visita_agendada", [
+      await registrarEstagioInteresse(imovel, "visita_agendada", [
         `Visita agendada para: ${dataHoraFormatada}`,
         endereco ? `Endereço: ${endereco}` : "",
         visitaAgendada.observacao.trim()
@@ -1763,9 +1799,7 @@ export default function ClienteDetalhesPage() {
     );
   }
 
-  const imovelPropostaSelecionado = matches.find(
-    (match) => match.id === propostaImovelId
-  );
+  const imovelPropostaSelecionado = propostaImovelSelecionado;
 
   return (
     <main
@@ -2393,6 +2427,7 @@ export default function ClienteDetalhesPage() {
       {/* AÇÕES RÁPIDAS */}
 
       <section
+        id="acoes-rapidas"
         style={{
           border: "1px solid #ddd",
           borderRadius: 12,
@@ -2471,6 +2506,170 @@ export default function ClienteDetalhesPage() {
             Fechar negócio
           </button>
         </div>
+
+        {visitaAgendada?.matchId === null && (
+          <div
+            style={{
+              marginTop: 18,
+              padding: 15,
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              background: "#f9fafb",
+            }}
+          >
+            <strong>Agendar visita</strong>
+
+            <label
+              style={{
+                display: "block",
+                marginTop: 12,
+              }}
+            >
+              Imóvel
+              <ImovelSearchSelect
+                selecionado={
+                  visitaAgendada.imovel
+                    ? {
+                        id: visitaAgendada.imovel.id,
+                        titulo: visitaAgendada.imovel.nome,
+                        codigo: visitaAgendada.imovel.codigo || null,
+                        bairro: visitaAgendada.imovel.bairro || null,
+                        cidade: visitaAgendada.imovel.cidade || null,
+                        endereco: visitaAgendada.imovel.endereco || null,
+                        numero: visitaAgendada.imovel.numero || null,
+                        proprietario: null,
+                        status: null,
+                      }
+                    : null
+                }
+                onSelect={(imovel) => {
+                  setVisitaAgendada({
+                    ...visitaAgendada,
+                    imovel: imovel ? imovelSelecaoParaAcao(imovel) : null,
+                  });
+                }}
+              />
+            </label>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: 10,
+                marginTop: 12,
+              }}
+            >
+              <label>
+                Data
+                <input
+                  type="date"
+                  value={visitaAgendada.data}
+                  onChange={(e) =>
+                    setVisitaAgendada({
+                      ...visitaAgendada,
+                      data: e.target.value,
+                    })
+                  }
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 5,
+                  }}
+                />
+              </label>
+
+              <label>
+                Horário
+                <input
+                  type="time"
+                  value={visitaAgendada.hora}
+                  onChange={(e) =>
+                    setVisitaAgendada({
+                      ...visitaAgendada,
+                      hora: e.target.value,
+                    })
+                  }
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 5,
+                  }}
+                />
+              </label>
+            </div>
+
+            <label
+              style={{
+                display: "block",
+                marginTop: 12,
+              }}
+            >
+              Observação
+              <textarea
+                value={visitaAgendada.observacao}
+                onChange={(e) =>
+                  setVisitaAgendada({
+                    ...visitaAgendada,
+                    observacao: e.target.value,
+                  })
+                }
+                placeholder="Observação opcional"
+                rows={3}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: 10,
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                marginTop: 12,
+              }}
+            >
+              <button
+                type="button"
+                onClick={salvarAgendamentoVisita}
+                disabled={salvandoEstagio !== null}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "#111827",
+                  color: "#fff",
+                  fontWeight: 600,
+                  cursor: salvandoEstagio !== null ? "wait" : "pointer",
+                }}
+              >
+                {salvandoEstagio !== null ? "Salvando..." : "Confirmar visita"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setVisitaAgendada(null)}
+                disabled={salvandoEstagio !== null}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  color: "#111827",
+                  fontWeight: 600,
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* MATCH */}
@@ -2535,25 +2734,34 @@ export default function ClienteDetalhesPage() {
               {!propostaImovelFixado && (
                 <label>
                   Imóvel
-                  <select
-                    value={propostaImovelId}
-                    onChange={(e) =>
-                      setPropostaImovelId(e.target.value)
+                  <ImovelSearchSelect
+                    selecionado={
+                      propostaImovelSelecionado
+                        ? {
+                            id: propostaImovelSelecionado.id,
+                            titulo: propostaImovelSelecionado.nome,
+                            codigo:
+                              propostaImovelSelecionado.codigo || null,
+                            bairro:
+                              propostaImovelSelecionado.bairro || null,
+                            cidade:
+                              propostaImovelSelecionado.cidade || null,
+                            endereco:
+                              propostaImovelSelecionado.endereco || null,
+                            numero:
+                              propostaImovelSelecionado.numero || null,
+                            proprietario: null,
+                            status: null,
+                          }
+                        : null
                     }
-                    style={{
-                      display: "block",
-                      width: "100%",
-                      padding: 10,
-                      marginTop: 5,
+                    onSelect={(imovel) => {
+                      setPropostaImovelId(imovel?.id || "");
+                      setPropostaImovelSelecionado(
+                        imovel ? imovelSelecaoParaAcao(imovel) : null
+                      );
                     }}
-                  >
-                    <option value="">Selecione o imóvel</option>
-                    {matches.map((match) => (
-                      <option key={match.id} value={match.id}>
-                        {match.nome} - {match.score}% de compatibilidade
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
               )}
 
@@ -2905,7 +3113,7 @@ export default function ClienteDetalhesPage() {
                   >
                     <button
                       type="button"
-                      onClick={() => salvarAgendamentoVisita(match)}
+                      onClick={salvarAgendamentoVisita}
                       disabled={salvandoEstagio !== null}
                       style={{
                         padding: "9px 12px",

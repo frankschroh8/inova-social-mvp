@@ -106,7 +106,8 @@ export function determinarEtapaComercial(
   historicos: HistoricoFunil[],
   agendas: AgendaFunil[],
   quantidadeMatches: number,
-  quantidadePropostasAtivas = 0
+  quantidadePropostasAtivas = 0,
+  quantidadePropostasEstruturadas = 0
 ): EtapaFunil {
   const status = normalizarTexto(cliente.status);
 
@@ -119,11 +120,14 @@ export function determinarEtapaComercial(
     .map((item) => extrairEstagio(item.descricao))
     .filter(Boolean);
 
-  const temProposta =
-    quantidadePropostasAtivas > 0 ||
+  const temPropostaEstruturada = quantidadePropostasEstruturadas > 0;
+  const temPropostaLegada =
     status === "proposta" ||
     estagios.includes("proposta") ||
     historicos.some((item) => normalizarTexto(item.tipo) === "proposta");
+  const temProposta =
+    quantidadePropostasAtivas > 0 ||
+    (!temPropostaEstruturada && temPropostaLegada);
 
   if (temProposta) {
     return "Proposta";
@@ -216,8 +220,7 @@ export async function listarFunil() {
       .select("cliente_id, status")
       .in("cliente_id", clienteIds)
       .eq("corretor_id", user.id)
-      .is("deleted_at", null)
-      .in("status", ["enviada", "em_negociacao", "aceita"]),
+      .is("deleted_at", null),
   ]);
 
   if (historicoError) {
@@ -242,7 +245,8 @@ export async function listarFunil() {
   const historicoPorCliente = new Map<string, HistoricoFunil[]>();
   const agendaPorCliente = new Map<string, AgendaFunil[]>();
   const matchesPorCliente = new Map<string, number>();
-  const propostasPorCliente = new Map<string, number>();
+  const propostasAtivasPorCliente = new Map<string, number>();
+  const propostasEstruturadasPorCliente = new Map<string, number>();
 
   (historico || []).forEach((item) => {
     if (!item.cliente_id) return;
@@ -274,10 +278,21 @@ export async function listarFunil() {
   ((propostas || []) as PropostaFunil[]).forEach((item) => {
     if (!item.cliente_id) return;
 
-    propostasPorCliente.set(
+    propostasEstruturadasPorCliente.set(
       item.cliente_id,
-      (propostasPorCliente.get(item.cliente_id) || 0) + 1
+      (propostasEstruturadasPorCliente.get(item.cliente_id) || 0) + 1
     );
+
+    if (
+      item.status === "enviada" ||
+      item.status === "em_negociacao" ||
+      item.status === "aceita"
+    ) {
+      propostasAtivasPorCliente.set(
+        item.cliente_id,
+        (propostasAtivasPorCliente.get(item.cliente_id) || 0) + 1
+      );
+    }
   });
 
   return (clientes || []).map((cliente) => {
@@ -285,7 +300,9 @@ export async function listarFunil() {
     const agendas = agendaPorCliente.get(cliente.id) || [];
     const quantidadeMatches = matchesPorCliente.get(cliente.id) || 0;
     const quantidadePropostasAtivas =
-      propostasPorCliente.get(cliente.id) || 0;
+      propostasAtivasPorCliente.get(cliente.id) || 0;
+    const quantidadePropostasEstruturadas =
+      propostasEstruturadasPorCliente.get(cliente.id) || 0;
     const ultimoHistorico = historicos[0];
     const ultimaAgenda = agendas[0];
     const ultimaData = dataMaisRecente([
@@ -303,7 +320,8 @@ export async function listarFunil() {
         historicos,
         agendas,
         quantidadeMatches,
-        quantidadePropostasAtivas
+        quantidadePropostasAtivas,
+        quantidadePropostasEstruturadas
       ),
       quantidadeMatches,
       ultimaAtividade: textoUltimaAtividade(

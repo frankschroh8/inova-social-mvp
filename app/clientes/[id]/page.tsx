@@ -126,6 +126,22 @@ interface Proposta {
   eventos?: PropostaEvento[];
 }
 
+interface Negocio {
+  id: string;
+  cliente_id: string;
+  imovel_id: string;
+  proposta_id: string | null;
+  corretor_id: string;
+  valor_final: number;
+  finalidade: string;
+  data_fechamento: string;
+  observacoes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  imovel_titulo?: string | null;
+  imovel_codigo?: string | null;
+}
+
 type EstagioInteresse =
   | "interessado"
   | "visita_agendada"
@@ -166,12 +182,14 @@ export default function ClienteDetalhesPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [historico, setHistorico] = useState<Historico[]>([]);
   const [propostas, setPropostas] = useState<Proposta[]>([]);
+  const [negociosFechados, setNegociosFechados] = useState<Negocio[]>([]);
 
   const [carregando, setCarregando] = useState(true);
   const [carregandoMatch, setCarregandoMatch] = useState(false);
   const [salvandoContato, setSalvandoContato] = useState(false);
   const [salvandoCliente, setSalvandoCliente] = useState(false);
   const [salvandoProposta, setSalvandoProposta] = useState(false);
+  const [salvandoFechamento, setSalvandoFechamento] = useState(false);
   const [salvandoContraproposta, setSalvandoContraproposta] = useState(false);
   const [salvandoStatusProposta, setSalvandoStatusProposta] = useState<
     string | null
@@ -233,6 +251,17 @@ export default function ClienteDetalhesPage() {
     useState("");
   const [observacaoContraproposta, setObservacaoContraproposta] =
     useState("");
+  const [fechandoNegocio, setFechandoNegocio] = useState(false);
+  const [fechamentoSemProposta, setFechamentoSemProposta] =
+    useState(false);
+  const [fechamentoPropostaId, setFechamentoPropostaId] = useState("");
+  const [fechamentoImovelSelecionado, setFechamentoImovelSelecionado] =
+    useState<ImovelAcao | null>(null);
+  const [fechamentoValorFinal, setFechamentoValorFinal] = useState("");
+  const [fechamentoFinalidade, setFechamentoFinalidade] = useState("");
+  const [fechamentoData, setFechamentoData] = useState("");
+  const [fechamentoObservacoes, setFechamentoObservacoes] =
+    useState("");
   const [visitaAgendada, setVisitaAgendada] = useState<{
     matchId: string | null;
     imovel: ImovelAcao | null;
@@ -274,6 +303,25 @@ export default function ClienteDetalhesPage() {
       currency: "BRL",
       maximumFractionDigits: 0,
     });
+  }
+
+  function finalidadeValida(valor: string | null | undefined) {
+    return valor === "venda" || valor === "locacao";
+  }
+
+  function rotuloFinalidade(valor: string | null | undefined) {
+    if (valor === "venda") return "Venda";
+    if (valor === "locacao") return "Locação";
+
+    return valor || "-";
+  }
+
+  function dataHoraAtualLocal() {
+    const agora = new Date();
+    const offset = agora.getTimezoneOffset();
+    const local = new Date(agora.getTime() - offset * 60000);
+
+    return local.toISOString().slice(0, 16);
   }
 
   function rotuloStatusProposta(status: string | null | undefined) {
@@ -508,6 +556,7 @@ export default function ClienteDetalhesPage() {
 
       await carregarHistorico(clienteId);
       await carregarPropostas(clienteId, user.id);
+      await carregarNegocio(clienteId, user.id);
 
       setCarregando(false);
     } catch (error) {
@@ -657,6 +706,92 @@ export default function ClienteDetalhesPage() {
           imovel_titulo: imovel?.titulo || null,
           imovel_codigo: imovel?.codigo || null,
           eventos: eventosPorProposta.get(proposta.id) || [],
+        };
+      })
+    );
+  }
+
+  async function carregarNegocio(clienteId: string, userId?: string) {
+    let corretorId = userId;
+
+    if (!corretorId) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      corretorId = user?.id;
+    }
+
+    if (!corretorId) {
+      setNegociosFechados([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("negocios")
+      .select(`
+        id,
+        cliente_id,
+        imovel_id,
+        proposta_id,
+        corretor_id,
+        valor_final,
+        finalidade,
+        data_fechamento,
+        observacoes,
+        created_at,
+        updated_at
+      `)
+      .eq("cliente_id", clienteId)
+      .eq("corretor_id", corretorId)
+      .is("deleted_at", null)
+      .order("data_fechamento", { ascending: false });
+
+    if (error) {
+      console.error("Erro ao carregar negócio:", error);
+      setNegociosFechados([]);
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      setNegociosFechados([]);
+      return;
+    }
+
+    const imovelIds = Array.from(
+      new Set(data.map((negocio) => negocio.imovel_id).filter(Boolean))
+    ) as string[];
+    const imoveisPorId = new Map<
+      string,
+      { titulo: string | null; codigo: string | null }
+    >();
+
+    if (imovelIds.length > 0) {
+      const { data: imoveis, error: imovelError } = await supabase
+        .from("imoveis")
+        .select("id, titulo, codigo")
+        .in("id", imovelIds);
+
+      if (imovelError) {
+        console.error("Erro ao carregar imóveis dos negócios:", imovelError);
+      }
+
+      (imoveis || []).forEach((imovel) => {
+        imoveisPorId.set(imovel.id, {
+          titulo: imovel.titulo,
+          codigo: imovel.codigo,
+        });
+      });
+    }
+
+    setNegociosFechados(
+      (data as Negocio[]).map((negocio) => {
+        const imovel = imoveisPorId.get(negocio.imovel_id);
+
+        return {
+          ...negocio,
+          imovel_titulo: imovel?.titulo || null,
+          imovel_codigo: imovel?.codigo || null,
         };
       })
     );
@@ -1028,6 +1163,24 @@ export default function ClienteDetalhesPage() {
       cidade: imovel.cidade,
       endereco: imovel.endereco,
       numero: imovel.numero,
+    };
+  }
+
+  function imovelAcaoParaSelecao(
+    imovel: ImovelAcao | null
+  ): ImovelSelecao | null {
+    if (!imovel) return null;
+
+    return {
+      id: imovel.id,
+      titulo: imovel.nome,
+      codigo: imovel.codigo || null,
+      bairro: imovel.bairro || null,
+      cidade: imovel.cidade || null,
+      endereco: imovel.endereco || null,
+      numero: imovel.numero || null,
+      proprietario: null,
+      status: null,
     };
   }
 
@@ -1623,16 +1776,123 @@ export default function ClienteDetalhesPage() {
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  async function fecharNegocio() {
-    if (!cliente) return;
-
-    const confirmar = window.confirm(
-      "Deseja marcar este cliente como Fechado?"
+  function propostasAceitasParaFechamento() {
+    const propostasJaFechadas = new Set(
+      negociosFechados
+        .map((negocio) => negocio.proposta_id)
+        .filter(Boolean)
     );
 
-    if (!confirmar) return;
+    return propostas.filter(
+      (proposta) =>
+        proposta.status === "aceita" &&
+        Boolean(proposta.imovel_id) &&
+        !propostasJaFechadas.has(proposta.id)
+    );
+  }
 
-    setSalvandoCliente(true);
+  function limparFormularioFechamento() {
+    setFechandoNegocio(false);
+    setFechamentoSemProposta(false);
+    setFechamentoPropostaId("");
+    setFechamentoImovelSelecionado(null);
+    setFechamentoValorFinal("");
+    setFechamentoFinalidade("");
+    setFechamentoData("");
+    setFechamentoObservacoes("");
+  }
+
+  function preencherFechamentoPorProposta(proposta: Proposta) {
+    if (!proposta.imovel_id) return;
+
+    setFechamentoSemProposta(false);
+    setFechamentoPropostaId(proposta.id);
+    setFechamentoImovelSelecionado({
+      id: proposta.imovel_id,
+      nome: nomeImovelProposta(proposta),
+      codigo: proposta.imovel_codigo || null,
+    });
+    setFechamentoValorFinal(String(proposta.valor || ""));
+    setFechamentoFinalidade(
+      finalidadeValida(cliente?.finalidade) ? cliente.finalidade || "" : ""
+    );
+    setFechamentoData(fechamentoData || dataHoraAtualLocal());
+  }
+
+  function iniciarFechamentoSemProposta() {
+    setFechamentoSemProposta(true);
+    setFechamentoPropostaId("");
+    setFechamentoImovelSelecionado(null);
+    setFechamentoValorFinal("");
+    setFechamentoFinalidade(
+      finalidadeValida(cliente?.finalidade) ? cliente.finalidade || "" : ""
+    );
+    setFechamentoData(fechamentoData || dataHoraAtualLocal());
+  }
+
+  function fecharNegocio() {
+    if (!cliente) return;
+
+    const propostasAceitas = propostasAceitasParaFechamento();
+
+    setFechandoNegocio(true);
+    setFechamentoSemProposta(propostasAceitas.length === 0);
+    setFechamentoData(dataHoraAtualLocal());
+    setFechamentoFinalidade(
+      finalidadeValida(cliente.finalidade) ? cliente.finalidade || "" : ""
+    );
+
+    if (propostasAceitas.length === 1) {
+      preencherFechamentoPorProposta(propostasAceitas[0]);
+    } else {
+      setFechamentoPropostaId("");
+      setFechamentoImovelSelecionado(null);
+      setFechamentoValorFinal("");
+    }
+
+    document
+      .getElementById("fechamento-negocio")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function confirmarFechamentoNegocio() {
+    if (!cliente) return;
+
+    const imovel = fechamentoImovelSelecionado;
+    const valorFinal = Number(fechamentoValorFinal);
+
+    if (!imovel) {
+      alert("Selecione o imóvel do fechamento.");
+      return;
+    }
+
+    if (
+      !fechamentoValorFinal ||
+      Number.isNaN(valorFinal) ||
+      valorFinal <= 0
+    ) {
+      alert("Informe um valor final válido.");
+      return;
+    }
+
+    if (!finalidadeValida(fechamentoFinalidade)) {
+      alert("Informe a finalidade do fechamento.");
+      return;
+    }
+
+    if (!fechamentoData) {
+      alert("Informe a data do fechamento.");
+      return;
+    }
+
+    const dataFechamento = new Date(fechamentoData);
+
+    if (Number.isNaN(dataFechamento.getTime())) {
+      alert("Informe uma data de fechamento válida.");
+      return;
+    }
+
+    setSalvandoFechamento(true);
 
     try {
       const {
@@ -1641,6 +1901,83 @@ export default function ClienteDetalhesPage() {
 
       if (!user) {
         alert("Usuário não está logado.");
+        return;
+      }
+
+      if (fechamentoPropostaId) {
+        const { data: negocioPropostaExistente, error: propostaError } =
+          await supabase
+            .from("negocios")
+            .select("id")
+            .eq("proposta_id", fechamentoPropostaId)
+            .eq("corretor_id", user.id)
+            .is("deleted_at", null)
+            .limit(1)
+            .maybeSingle();
+
+        if (propostaError) {
+          console.error(
+            "Erro ao verificar proposta vinculada:",
+            propostaError
+          );
+          alert(
+            `Erro ao verificar proposta vinculada: ${propostaError.message}`
+          );
+          return;
+        }
+
+        if (negocioPropostaExistente) {
+          alert("Esta proposta já está vinculada a um negócio fechado.");
+          return;
+        }
+      }
+
+      const { data: imovelAtual, error: imovelError } = await supabase
+        .from("imoveis")
+        .select("id, titulo, codigo, status, finalidade")
+        .eq("id", imovel.id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (imovelError) {
+        console.error("Erro ao verificar imóvel:", imovelError);
+        alert(`Erro ao verificar imóvel: ${imovelError.message}`);
+        return;
+      }
+
+      if (!imovelAtual) {
+        alert("Imóvel não encontrado ou não pertence ao usuário.");
+        return;
+      }
+
+      if (
+        imovelAtual.status === "vendido" ||
+        imovelAtual.status === "alugado"
+      ) {
+        alert(
+          `Este imóvel já está marcado como ${imovelAtual.status}. Não foi criado outro fechamento.`
+        );
+        return;
+      }
+
+      const agora = new Date().toISOString();
+      const { error: negocioError } = await supabase
+        .from("negocios")
+        .insert({
+          cliente_id: cliente.id,
+          imovel_id: imovel.id,
+          proposta_id: fechamentoPropostaId || null,
+          corretor_id: user.id,
+          valor_final: valorFinal,
+          finalidade: fechamentoFinalidade,
+          data_fechamento: dataFechamento.toISOString(),
+          observacoes: fechamentoObservacoes.trim() || null,
+          updated_at: agora,
+        });
+
+      if (negocioError) {
+        console.error("Erro ao registrar negócio:", negocioError);
+        alert(`Erro ao registrar negócio: ${negocioError.message}`);
         return;
       }
 
@@ -1661,13 +1998,62 @@ export default function ClienteDetalhesPage() {
         return;
       }
 
+      const novoStatusImovel =
+        fechamentoFinalidade === "venda" ? "vendido" : "alugado";
+      const { error: imovelUpdateError } = await supabase
+        .from("imoveis")
+        .update({
+          status: novoStatusImovel,
+          updated_at: agora,
+        })
+        .eq("id", imovel.id)
+        .eq("user_id", user.id);
+
+      if (imovelUpdateError) {
+        console.error(
+          "Erro ao atualizar status do imóvel:",
+          imovelUpdateError
+        );
+        alert(
+          `Negócio registrado, mas houve erro ao atualizar o imóvel: ${imovelUpdateError.message}`
+        );
+        return;
+      }
+
+      const imovelNome =
+        imovelAtual.titulo ||
+        imovel.nome ||
+        "Imóvel";
+      const valorFormatado = valorFinal.toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        maximumFractionDigits: 0,
+      });
+      const descricao = [
+        "Negócio fechado",
+        `Imóvel: ${imovelNome}`,
+        imovelAtual.codigo ? `Código: ${imovelAtual.codigo}` : "",
+        `ID do imóvel: ${imovel.id}`,
+        `Finalidade: ${rotuloFinalidade(fechamentoFinalidade)}`,
+        `Valor final: ${valorFormatado}`,
+        `Data do fechamento: ${dataFechamento.toLocaleString("pt-BR")}`,
+        fechamentoPropostaId
+          ? `Proposta vinculada: ${fechamentoPropostaId}`
+          : "Proposta vinculada: não",
+        fechamentoObservacoes.trim()
+          ? `Observação: ${fechamentoObservacoes.trim()}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
       const { error: historicoError } = await supabase
         .from("historico")
         .insert({
           cliente_id: cliente.id,
           usuario_id: user.id,
           tipo: "fechamento",
-          descricao: `Cliente marcado como Fechado em ${new Date().toLocaleString("pt-BR")}.`,
+          descricao,
         });
 
       if (historicoError) {
@@ -1679,9 +2065,11 @@ export default function ClienteDetalhesPage() {
 
       setCliente(data);
       preencherFormularioCliente(data);
+      limparFormularioFechamento();
+      await carregarNegocio(cliente.id, user.id);
       await carregarHistorico(cliente.id);
 
-      alert("Negócio marcado como fechado.");
+      alert("Negócio fechado com sucesso.");
     } catch (error) {
       console.error(error);
 
@@ -1691,7 +2079,7 @@ export default function ClienteDetalhesPage() {
           : "Erro ao fechar negócio."
       );
     } finally {
-      setSalvandoCliente(false);
+      setSalvandoFechamento(false);
     }
   }
 
@@ -1800,6 +2188,7 @@ export default function ClienteDetalhesPage() {
   }
 
   const imovelPropostaSelecionado = propostaImovelSelecionado;
+  const propostasAceitas = propostasAceitasParaFechamento();
 
   return (
     <main
@@ -2492,7 +2881,7 @@ export default function ClienteDetalhesPage() {
           <button
             type="button"
             onClick={fecharNegocio}
-            disabled={salvandoCliente}
+            disabled={salvandoFechamento}
             style={{
               padding: "12px 18px",
               borderRadius: 8,
@@ -2500,10 +2889,12 @@ export default function ClienteDetalhesPage() {
               background: "#111827",
               color: "#fff",
               fontWeight: 700,
-              cursor: salvandoCliente ? "wait" : "pointer",
+              cursor: salvandoFechamento ? "wait" : "pointer",
             }}
           >
-            Fechar negócio
+            {negociosFechados.length > 0
+              ? "Registrar novo negócio"
+              : "Fechar negócio"}
           </button>
         </div>
 
@@ -2656,6 +3047,335 @@ export default function ClienteDetalhesPage() {
                 type="button"
                 onClick={() => setVisitaAgendada(null)}
                 disabled={salvandoEstagio !== null}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  color: "#111827",
+                  fontWeight: 600,
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {negociosFechados.length > 0 && (
+          <div
+            style={{
+              marginTop: 18,
+              padding: 16,
+              border: "1px solid #bbf7d0",
+              borderRadius: 10,
+              background: "#f0fdf4",
+            }}
+          >
+            <h3 style={{ margin: "0 0 12px" }}>
+              {negociosFechados.length === 1
+                ? "Negócio fechado"
+                : "Negócios fechados"}
+            </h3>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              {negociosFechados.map((negocio) => (
+                <div
+                  key={negocio.id}
+                  style={{
+                    border: "1px solid #bbf7d0",
+                    borderRadius: 10,
+                    padding: 12,
+                    background: "#fff",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(180px, 1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    <CampoCliente
+                      titulo="Imóvel"
+                      valor={negocio.imovel_titulo || negocio.imovel_id}
+                    />
+                    <CampoCliente
+                      titulo="Finalidade"
+                      valor={rotuloFinalidade(negocio.finalidade)}
+                    />
+                    <CampoCliente
+                      titulo="Valor final"
+                      valor={formatarMoeda(negocio.valor_final) || "-"}
+                    />
+                    <CampoCliente
+                      titulo="Data"
+                      valor={new Date(
+                        negocio.data_fechamento
+                      ).toLocaleString("pt-BR")}
+                    />
+                    <CampoCliente
+                      titulo="Proposta vinculada"
+                      valor={negocio.proposta_id || "Não"}
+                    />
+                  </div>
+
+                  {negocio.observacoes && (
+                    <p style={{ margin: "12px 0 0" }}>
+                      <strong>Observação:</strong> {negocio.observacoes}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {fechandoNegocio && (
+          <div
+            id="fechamento-negocio"
+            style={{
+              marginTop: 18,
+              padding: 16,
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              background: "#f9fafb",
+            }}
+          >
+            <h3 style={{ margin: "0 0 12px" }}>Fechar negócio</h3>
+
+            {propostasAceitas.length > 0 && !fechamentoSemProposta && (
+              <label style={{ display: "block" }}>
+                Negociação aceita
+                <select
+                  value={fechamentoPropostaId}
+                  onChange={(e) => {
+                    const proposta = propostasAceitas.find(
+                      (item) => item.id === e.target.value
+                    );
+
+                    if (proposta) {
+                      preencherFechamentoPorProposta(proposta);
+                    } else {
+                      setFechamentoPropostaId("");
+                      setFechamentoImovelSelecionado(null);
+                      setFechamentoValorFinal("");
+                    }
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 5,
+                  }}
+                >
+                  <option value="">Selecione a proposta aceita</option>
+                  {propostasAceitas.map((proposta) => (
+                    <option key={proposta.id} value={proposta.id}>
+                      {nomeImovelProposta(proposta)} -{" "}
+                      {formatarMoeda(proposta.valor)} -{" "}
+                      {proposta.data_proposta
+                        ? new Date(
+                            proposta.data_proposta
+                          ).toLocaleDateString("pt-BR")
+                        : "Data não informada"}{" "}
+                      - Aceita
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {propostasAceitas.length > 0 && (
+              <button
+                type="button"
+                onClick={iniciarFechamentoSemProposta}
+                style={{
+                  marginTop: 10,
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  color: "#111827",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Fechar sem proposta vinculada
+              </button>
+            )}
+
+            {propostasAceitas.length === 0 && (
+              <p style={{ color: "#6b7280", margin: "0 0 12px" }}>
+                Nenhuma proposta aceita encontrada. Use fechamento sem
+                proposta vinculada.
+              </p>
+            )}
+
+            {(fechamentoSemProposta || propostasAceitas.length === 0) && (
+              <label
+                style={{
+                  display: "block",
+                  marginTop: 12,
+                }}
+              >
+                Imóvel
+                <ImovelSearchSelect
+                  selecionado={imovelAcaoParaSelecao(
+                    fechamentoImovelSelecionado
+                  )}
+                  onSelect={(imovel) =>
+                    setFechamentoImovelSelecionado(
+                      imovel ? imovelSelecaoParaAcao(imovel) : null
+                    )
+                  }
+                />
+              </label>
+            )}
+
+            {!fechamentoSemProposta && fechamentoImovelSelecionado && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  background: "#fff",
+                }}
+              >
+                <small
+                  style={{
+                    display: "block",
+                    color: "#6b7280",
+                    fontWeight: 700,
+                    marginBottom: 4,
+                  }}
+                >
+                  Imóvel selecionado
+                </small>
+                <strong>{fechamentoImovelSelecionado.nome}</strong>
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 10,
+                marginTop: 12,
+              }}
+            >
+              <label>
+                Valor final
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={fechamentoValorFinal}
+                  onChange={(e) =>
+                    setFechamentoValorFinal(e.target.value)
+                  }
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 5,
+                  }}
+                />
+              </label>
+
+              <label>
+                Finalidade
+                <select
+                  value={fechamentoFinalidade}
+                  onChange={(e) =>
+                    setFechamentoFinalidade(e.target.value)
+                  }
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 5,
+                  }}
+                >
+                  <option value="">Selecione</option>
+                  <option value="venda">Venda</option>
+                  <option value="locacao">Locação</option>
+                </select>
+              </label>
+
+              <label>
+                Data do fechamento
+                <input
+                  type="datetime-local"
+                  value={fechamentoData}
+                  onChange={(e) => setFechamentoData(e.target.value)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 5,
+                  }}
+                />
+              </label>
+            </div>
+
+            <label
+              style={{
+                display: "block",
+                marginTop: 12,
+              }}
+            >
+              Observações
+              <textarea
+                value={fechamentoObservacoes}
+                onChange={(e) =>
+                  setFechamentoObservacoes(e.target.value)
+                }
+                placeholder="Observação opcional"
+                rows={3}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: 10,
+                  marginTop: 5,
+                }}
+              />
+            </label>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                marginTop: 12,
+              }}
+            >
+              <button
+                type="button"
+                onClick={confirmarFechamentoNegocio}
+                disabled={salvandoFechamento}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "#111827",
+                  color: "#fff",
+                  fontWeight: 600,
+                  cursor: salvandoFechamento ? "wait" : "pointer",
+                }}
+              >
+                {salvandoFechamento
+                  ? "Salvando..."
+                  : "Confirmar fechamento"}
+              </button>
+
+              <button
+                type="button"
+                onClick={limparFormularioFechamento}
+                disabled={salvandoFechamento}
                 style={{
                   padding: "9px 12px",
                   borderRadius: 8,

@@ -4,7 +4,7 @@ interface Props {
   lead: any;
 }
 
-function formatarValor(valor: number | null | undefined) {
+function formatarValor(valor: number | string | null | undefined) {
   if (valor === null || valor === undefined) {
     return "Não informado";
   }
@@ -25,6 +25,13 @@ function formatarFinalidade(finalidade: string | null | undefined) {
   return finalidade;
 }
 
+function formatarFinalidadeNegocio(finalidade: string | null | undefined) {
+  if (finalidade === "venda") return "Venda";
+  if (finalidade === "locacao") return "Locação";
+
+  return "Negócio";
+}
+
 function formatarData(data: string | null | undefined) {
   if (!data) return null;
 
@@ -39,6 +46,12 @@ function formatarData(data: string | null | undefined) {
 
 export default function LeadCard({ lead }: Props) {
   const ultimaAtividadeEm = formatarData(lead.ultimaAtividadeEm);
+  const isFechado = lead.etapa === "Fechado";
+  const resumoNegocios = lead.resumoNegocios || {
+    quantidade: 0,
+    ultimoNegocio: null,
+  };
+  const ultimoNegocio = resumoNegocios.ultimoNegocio;
 
   return (
     <a
@@ -54,6 +67,52 @@ export default function LeadCard({ lead }: Props) {
         <p className="mt-1 text-sm text-gray-500">
           {lead.telefone}
         </p>
+      )}
+
+      {isFechado && (
+        <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
+          {resumoNegocios.quantidade > 0 ? (
+            <>
+              <p className="font-semibold">
+                {resumoNegocios.quantidade === 1
+                  ? "1 negócio fechado"
+                  : `${resumoNegocios.quantidade} negócios fechados`}
+              </p>
+
+              {ultimoNegocio && (
+                <div className="mt-3 space-y-1 text-emerald-950">
+                  <p className="text-xs font-medium uppercase text-emerald-700">
+                    Último negócio
+                  </p>
+
+                  <p className="font-semibold">
+                    {ultimoNegocio.imovelTitulo || "Imóvel"}
+                    {ultimoNegocio.imovelCodigo
+                      ? ` • Código ${ultimoNegocio.imovelCodigo}`
+                      : ""}
+                  </p>
+
+                  <p>{formatarFinalidadeNegocio(ultimoNegocio.finalidade)}</p>
+
+                  <p className="font-semibold">
+                    {formatarValor(ultimoNegocio.valorFinal)}
+                  </p>
+
+                  {ultimoNegocio.dataFechamento && (
+                    <p>{formatarData(ultimoNegocio.dataFechamento)}</p>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="font-semibold">Fechamento legado</p>
+              <p className="mt-1 text-emerald-800">
+                Sem negócio estruturado
+              </p>
+            </>
+          )}
+        </div>
       )}
 
       <div className="mt-3 space-y-1 text-sm text-gray-700">
@@ -78,12 +137,14 @@ export default function LeadCard({ lead }: Props) {
         </p>
       </div>
 
-      <div className="mt-3 rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
-        <strong>{lead.quantidadeMatches || 0}</strong>{" "}
-        {(lead.quantidadeMatches || 0) === 1
-          ? "imóvel compatível"
-          : "imóveis compatíveis"}
-      </div>
+      {!isFechado && (
+        <div className="mt-3 rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+          <strong>{lead.quantidadeMatches || 0}</strong>{" "}
+          {(lead.quantidadeMatches || 0) === 1
+            ? "imóvel compatível"
+            : "imóveis compatíveis"}
+        </div>
+      )}
 
       <div className="mt-3 border-t pt-3 text-xs text-gray-500">
         <p className="font-medium text-gray-600">

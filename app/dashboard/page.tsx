@@ -37,6 +37,35 @@ export default function Dashboard() {
     });
   }
 
+  function formatarMoeda(valor: number | string | null | undefined) {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      maximumFractionDigits: 0,
+    }).format(Number(valor || 0));
+  }
+
+  function formatarVariacaoValor(valor: number | string | null | undefined) {
+    const numero = Number(valor || 0);
+    const prefixo = numero > 0 ? "+" : "";
+
+    return `${prefixo}${formatarMoeda(numero)}`;
+  }
+
+  function formatarVariacaoQuantidade(valor: number | null | undefined) {
+    const numero = Number(valor || 0);
+    const prefixo = numero > 0 ? "+" : "";
+
+    return `${prefixo}${numero}`;
+  }
+
+  function rotuloFinalidade(finalidade: string | null | undefined) {
+    if (finalidade === "locacao") return "Locação";
+    if (finalidade === "venda") return "Venda";
+
+    return "Negócio";
+  }
+
   function nomeCliente(item: any) {
     const clientes = item.clientes;
 
@@ -113,6 +142,38 @@ export default function Dashboard() {
       "depende de clientes marcados como Fechado",
     ],
   ];
+  const resultadosComerciais = dados.resultadosComerciais;
+  const indicadoresComerciais = [
+    {
+      titulo: "Negócios no mês",
+      valor: resultadosComerciais.mesAtual.negocios,
+      descricao: `Mês anterior: ${resultadosComerciais.mesAnterior.negocios} negócios`,
+    },
+    {
+      titulo: "Valor fechado no mês",
+      valor: formatarMoeda(resultadosComerciais.mesAtual.valorTotal),
+      descricao: `Mês anterior: ${formatarMoeda(
+        resultadosComerciais.mesAnterior.valorTotal
+      )}`,
+    },
+    {
+      titulo: "Vendas",
+      valor: resultadosComerciais.mesAtual.vendas,
+      descricao: formatarMoeda(resultadosComerciais.mesAtual.valorVendas),
+    },
+    {
+      titulo: "Locações",
+      valor: resultadosComerciais.mesAtual.locacoes,
+      descricao: formatarMoeda(resultadosComerciais.mesAtual.valorLocacoes),
+    },
+    {
+      titulo: "Ticket médio",
+      valor: formatarMoeda(resultadosComerciais.mesAtual.ticketMedio),
+      descricao: `Histórico: ${formatarMoeda(
+        resultadosComerciais.historico.ticketMedio
+      )}`,
+    },
+  ];
 
   return (
     <main className="crm-dashboard-page bg-gray-50">
@@ -148,6 +209,91 @@ export default function Dashboard() {
             descricao={String(descricao)}
           />
         ))}
+      </section>
+
+      <section className="mt-10 rounded-xl border bg-white p-6 shadow-sm">
+        <div className="mb-5">
+          <h2 className="text-2xl font-semibold text-gray-950">
+            Resultados comerciais
+          </h2>
+
+          <p className="mt-1 text-sm text-gray-600">
+            Negócios efetivamente registrados no CRM.
+          </p>
+        </div>
+
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-5">
+          {indicadoresComerciais.map((item) => (
+            <MetricCard
+              key={item.titulo}
+              titulo={item.titulo}
+              valor={item.valor}
+              descricao={item.descricao}
+            />
+          ))}
+        </div>
+
+        <div className="mt-5 rounded-lg bg-gray-50 p-4 text-sm text-gray-700 ring-1 ring-gray-200">
+          <span>
+            Histórico: {resultadosComerciais.historico.negocios} negócios •{" "}
+            {formatarMoeda(resultadosComerciais.historico.valorTotal)}
+          </span>
+
+          <span className="mt-1 block">
+            Variação do mês:{" "}
+            {formatarVariacaoQuantidade(
+              resultadosComerciais.comparativo.diferencaNegocios
+            )}{" "}
+            negócios •{" "}
+            {formatarVariacaoValor(
+              resultadosComerciais.comparativo.diferencaValor
+            )}
+          </span>
+        </div>
+      </section>
+
+      <section className="mt-10 rounded-xl border bg-white p-6 shadow-sm">
+        <h2 className="text-2xl font-semibold text-gray-950">
+          Fechamentos recentes
+        </h2>
+
+        <div className="mt-4 space-y-4">
+          {resultadosComerciais.recentes.length === 0 ? (
+            <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">
+              Nenhum negócio fechado registrado ainda.
+            </p>
+          ) : (
+            resultadosComerciais.recentes.map((negocio: any) => (
+              <div
+                key={negocio.id}
+                className="rounded-lg border p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <strong>{negocio.cliente}</strong>
+
+                    <p className="mt-1 text-sm text-gray-600">
+                      {negocio.imovel}
+                      {negocio.codigo ? ` • Código ${negocio.codigo}` : ""}
+                    </p>
+                  </div>
+
+                  <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 ring-1 ring-gray-200">
+                    {rotuloFinalidade(negocio.finalidade)}
+                  </span>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-700">
+                  <span className="font-semibold text-gray-950">
+                    {formatarMoeda(negocio.valor_final)}
+                  </span>
+
+                  <span>{formatarData(negocio.data_fechamento)}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </section>
 
       <section className="mt-10 rounded-xl border bg-white p-6 shadow-sm">

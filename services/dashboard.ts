@@ -28,6 +28,80 @@ function followUpsVazios() {
   };
 }
 
+function resultadosComerciaisVazios() {
+  return {
+    mesAtual: {
+      negocios: 0,
+      valorTotal: 0,
+      vendas: 0,
+      valorVendas: 0,
+      locacoes: 0,
+      valorLocacoes: 0,
+      ticketMedio: 0,
+    },
+    mesAnterior: {
+      negocios: 0,
+      valorTotal: 0,
+    },
+    historico: {
+      negocios: 0,
+      valorTotal: 0,
+      ticketMedio: 0,
+    },
+    comparativo: {
+      diferencaNegocios: 0,
+      diferencaValor: 0,
+    },
+    recentes: [],
+  };
+}
+
+function chaveMesSaoPaulo(data: Date) {
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(data);
+  const ano = partes.find((parte) => parte.type === "year")?.value;
+  const mes = partes.find((parte) => parte.type === "month")?.value;
+
+  return `${ano}-${mes}`;
+}
+
+function chaveMesAnterior(chaveMes: string) {
+  const [anoTexto, mesTexto] = chaveMes.split("-");
+  let ano = Number(anoTexto);
+  let mes = Number(mesTexto) - 1;
+
+  if (mes === 0) {
+    mes = 12;
+    ano -= 1;
+  }
+
+  return `${ano}-${String(mes).padStart(2, "0")}`;
+}
+
+function somarValores(itens: { valor_final: number | string | null }[]) {
+  return itens.reduce(
+    (total, item) => total + Number(item.valor_final || 0),
+    0
+  );
+}
+
+function ticketMedio(valorTotal: number, quantidade: number) {
+  if (quantidade <= 0) return 0;
+
+  return Math.round(valorTotal / quantidade);
+}
+
+function primeiroRelacionamento<T>(valor: T | T[] | null | undefined) {
+  if (Array.isArray(valor)) {
+    return valor[0] || null;
+  }
+
+  return valor || null;
+}
+
 export async function getDashboardData() {
   const {
     data: { user },
@@ -55,6 +129,7 @@ export async function getDashboardData() {
       atividadesRecentes: [],
       proximasVisitas: [],
       followUps: followUpsVazios(),
+      resultadosComerciais: resultadosComerciaisVazios(),
       resumoFunil: ETAPAS.map((etapa) => ({
         etapa,
         total: 0,
@@ -88,6 +163,7 @@ export async function getDashboardData() {
       atividadesRecentes: [],
       proximasVisitas: [],
       followUps,
+      resultadosComerciais: resultadosComerciaisVazios(),
       resumoFunil: ETAPAS.map((etapa) => ({
         etapa,
         total: 0,
@@ -100,6 +176,7 @@ export async function getDashboardData() {
     { data: matches, error: matchesError },
     { data: atividadesRecentes, error: historicoError },
     { data: proximasVisitas, error: agendaError },
+    { data: negocios, error: negociosError },
   ] = await Promise.all([
       supabase
         .from("imoveis")
@@ -150,6 +227,28 @@ export async function getDashboardData() {
         .gte("data_inicio", new Date().toISOString())
         .order("data_inicio", { ascending: true })
         .limit(6),
+
+      supabase
+        .from("negocios")
+        .select(`
+          id,
+          cliente_id,
+          imovel_id,
+          proposta_id,
+          valor_final,
+          finalidade,
+          data_fechamento,
+          clientes (
+            nome
+          ),
+          imoveis (
+            titulo,
+            codigo
+          )
+        `)
+        .eq("corretor_id", user.id)
+        .is("deleted_at", null)
+        .order("data_fechamento", { ascending: false }),
     ]);
 
   if (imoveisError) {
@@ -180,6 +279,13 @@ export async function getDashboardData() {
     );
   }
 
+  if (negociosError) {
+    console.error(
+      "Erro ao carregar negócios do dashboard:",
+      negociosError
+    );
+  }
+
   const resumoFunil = ETAPAS.map((etapa) => ({
     etapa,
     total: funil.filter((cliente) => cliente.etapa === etapa).length,
@@ -202,6 +308,72 @@ export async function getDashboardData() {
     resumoFunil.find((item) => item.etapa === "Proposta")?.total || 0;
   const fechados =
     resumoFunil.find((item) => item.etapa === "Fechado")?.total || 0;
+  const negociosCarregados = negocios || [];
+  const mesAtualChave = chaveMesSaoPaulo(new Date());
+  const mesAnteriorChave = chaveMesAnterior(mesAtualChave);
+  const negociosMesAtual = negociosCarregados.filter(
+    (negocio) =>
+      chaveMesSaoPaulo(new Date(negocio.data_fechamento)) ===
+      mesAtualChave
+  );
+  const negociosMesAnterior = negociosCarregados.filter(
+    (negocio) =>
+      chaveMesSaoPaulo(new Date(negocio.data_fechamento)) ===
+      mesAnteriorChave
+  );
+  const vendasMesAtual = negociosMesAtual.filter(
+    (negocio) => negocio.finalidade === "venda"
+  );
+  const locacoesMesAtual = negociosMesAtual.filter(
+    (negocio) => negocio.finalidade === "locacao"
+  );
+  const valorMesAtual = somarValores(negociosMesAtual);
+  const valorMesAnterior = somarValores(negociosMesAnterior);
+  const valorHistorico = somarValores(negociosCarregados);
+  const resultadosComerciais = {
+    mesAtual: {
+      negocios: negociosMesAtual.length,
+      valorTotal: valorMesAtual,
+      vendas: vendasMesAtual.length,
+      valorVendas: somarValores(vendasMesAtual),
+      locacoes: locacoesMesAtual.length,
+      valorLocacoes: somarValores(locacoesMesAtual),
+      ticketMedio: ticketMedio(valorMesAtual, negociosMesAtual.length),
+    },
+    mesAnterior: {
+      negocios: negociosMesAnterior.length,
+      valorTotal: valorMesAnterior,
+    },
+    historico: {
+      negocios: negociosCarregados.length,
+      valorTotal: valorHistorico,
+      ticketMedio: ticketMedio(valorHistorico, negociosCarregados.length),
+    },
+    comparativo: {
+      diferencaNegocios:
+        negociosMesAtual.length - negociosMesAnterior.length,
+      diferencaValor: valorMesAtual - valorMesAnterior,
+    },
+    recentes: negociosCarregados.slice(0, 5).map((negocio) => {
+      const cliente = primeiroRelacionamento<{
+        nome: string | null;
+      }>(negocio.clientes);
+      const imovel = primeiroRelacionamento<{
+        titulo: string | null;
+        codigo: string | null;
+      }>(negocio.imoveis);
+
+      return {
+        id: negocio.id,
+        cliente: cliente?.nome || "Cliente",
+        imovel: imovel?.titulo || "Imóvel",
+        codigo: imovel?.codigo || null,
+        finalidade: negocio.finalidade,
+        valor_final: negocio.valor_final,
+        data_fechamento: negocio.data_fechamento,
+      };
+    }),
+  };
 
   return {
     indicadores: {
@@ -229,6 +401,7 @@ export async function getDashboardData() {
     atividadesRecentes: atividadesRecentes || [],
     proximasVisitas: proximasVisitas || [],
     followUps,
+    resultadosComerciais,
     resumoFunil,
   };
 }

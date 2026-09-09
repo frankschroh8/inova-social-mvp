@@ -43,6 +43,26 @@ interface PropostaFunil {
   status: string | null;
 }
 
+interface NegocioFunil {
+  id: string;
+  cliente_id: string | null;
+  imovel_id: string | null;
+  proposta_id: string | null;
+  valor_final: number | string | null;
+  finalidade: string | null;
+  data_fechamento: string | null;
+  imoveis?:
+    | {
+        titulo: string | null;
+        codigo: string | null;
+      }
+    | {
+        titulo: string | null;
+        codigo: string | null;
+      }[]
+    | null;
+}
+
 function extrairEstagio(descricao: string | null) {
   if (!descricao) return null;
 
@@ -67,6 +87,14 @@ function dataMaisRecente(datas: (string | null | undefined)[]) {
           new Date(a as string).getTime()
       )[0] || null
   );
+}
+
+function primeiroRelacionamento<T>(valor: T | T[] | null | undefined) {
+  if (Array.isArray(valor)) {
+    return valor[0] || null;
+  }
+
+  return valor || null;
 }
 
 function textoUltimaAtividade(
@@ -198,6 +226,7 @@ export async function listarFunil() {
     { data: matches, error: matchesError },
     { data: agenda, error: agendaError },
     { data: propostas, error: propostasError },
+    { data: negocios, error: negociosError },
   ] = await Promise.all([
     supabase
       .from("historico")
@@ -221,6 +250,25 @@ export async function listarFunil() {
       .in("cliente_id", clienteIds)
       .eq("corretor_id", user.id)
       .is("deleted_at", null),
+    supabase
+      .from("negocios")
+      .select(`
+        id,
+        cliente_id,
+        imovel_id,
+        proposta_id,
+        valor_final,
+        finalidade,
+        data_fechamento,
+        imoveis (
+          titulo,
+          codigo
+        )
+      `)
+      .in("cliente_id", clienteIds)
+      .eq("corretor_id", user.id)
+      .is("deleted_at", null)
+      .order("data_fechamento", { ascending: false }),
   ]);
 
   if (historicoError) {
@@ -242,11 +290,19 @@ export async function listarFunil() {
     );
   }
 
+  if (negociosError) {
+    console.error(
+      "Erro ao carregar negócios do funil:",
+      negociosError
+    );
+  }
+
   const historicoPorCliente = new Map<string, HistoricoFunil[]>();
   const agendaPorCliente = new Map<string, AgendaFunil[]>();
   const matchesPorCliente = new Map<string, number>();
   const propostasAtivasPorCliente = new Map<string, number>();
   const propostasEstruturadasPorCliente = new Map<string, number>();
+  const negociosPorCliente = new Map<string, NegocioFunil[]>();
 
   (historico || []).forEach((item) => {
     if (!item.cliente_id) return;
@@ -295,6 +351,15 @@ export async function listarFunil() {
     }
   });
 
+  ((negocios || []) as NegocioFunil[]).forEach((item) => {
+    if (!item.cliente_id) return;
+
+    negociosPorCliente.set(item.cliente_id, [
+      ...(negociosPorCliente.get(item.cliente_id) || []),
+      item,
+    ]);
+  });
+
   return (clientes || []).map((cliente) => {
     const historicos = historicoPorCliente.get(cliente.id) || [];
     const agendas = agendaPorCliente.get(cliente.id) || [];
@@ -305,6 +370,11 @@ export async function listarFunil() {
       propostasEstruturadasPorCliente.get(cliente.id) || 0;
     const ultimoHistorico = historicos[0];
     const ultimaAgenda = agendas[0];
+    const negociosCliente = negociosPorCliente.get(cliente.id) || [];
+    const ultimoNegocio = negociosCliente[0] || null;
+    const imovelUltimoNegocio = primeiroRelacionamento(
+      ultimoNegocio?.imoveis
+    );
     const ultimaData = dataMaisRecente([
       cliente.updated_at,
       cliente.created_at,
@@ -324,6 +394,20 @@ export async function listarFunil() {
         quantidadePropostasEstruturadas
       ),
       quantidadeMatches,
+      resumoNegocios: {
+        quantidade: negociosCliente.length,
+        ultimoNegocio: ultimoNegocio
+          ? {
+              id: ultimoNegocio.id,
+              imovelId: ultimoNegocio.imovel_id,
+              imovelTitulo: imovelUltimoNegocio?.titulo || null,
+              imovelCodigo: imovelUltimoNegocio?.codigo || null,
+              finalidade: ultimoNegocio.finalidade,
+              valorFinal: ultimoNegocio.valor_final,
+              dataFechamento: ultimoNegocio.data_fechamento,
+            }
+          : null,
+      },
       ultimaAtividade: textoUltimaAtividade(
         ultimoHistorico,
         ultimaAgenda

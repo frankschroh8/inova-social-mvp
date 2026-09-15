@@ -5,6 +5,7 @@ import Sidebar from "./Sidebar";
 
 const rotasComNavegacao = [
   "/dashboard",
+  "/atendimento",
   "/clientes",
   "/imoveis",
   "/agenda",

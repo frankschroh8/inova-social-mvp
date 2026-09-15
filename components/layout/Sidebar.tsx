@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const menus = [
   { nome: "Dashboard", link: "/dashboard" },
+  { nome: "Atendimento", link: "/atendimento" },
   { nome: "Clientes", link: "/clientes" },
   { nome: "Imóveis", link: "/imoveis" },
   { nome: "Agenda", link: "/agenda" },

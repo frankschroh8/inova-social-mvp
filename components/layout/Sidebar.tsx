@@ -9,6 +9,7 @@ const menus = [
   { nome: "Imóveis", link: "/imoveis" },
   { nome: "Agenda", link: "/agenda" },
   { nome: "Funil", link: "/funil" },
+  { nome: "Negócios", link: "/negocios" },
   { nome: "Pesquisa de Mercado", link: "/pesquisa-mercado" },
 ];
 

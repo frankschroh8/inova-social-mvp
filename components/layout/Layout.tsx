@@ -9,6 +9,7 @@ const rotasComNavegacao = [
   "/imoveis",
   "/agenda",
   "/funil",
+  "/negocios",
   "/pesquisa-mercado",
 ];
 

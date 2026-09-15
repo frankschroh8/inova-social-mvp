@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { registrarUltimoContato } from "@/services/contatos";
 import { classificarFollowUp } from "@/services/followups";
 
 interface ResultadoVisita {
@@ -209,6 +210,8 @@ export async function concluirCompromisso(
         `Error saving visit result: ${historicoError.message}`
       );
     }
+
+    await registrarUltimoContato(resultadoVisita.cliente_id, user.id);
 
     const sinalFunil = estagioPorResultado(resultadoVisita.resultado);
 

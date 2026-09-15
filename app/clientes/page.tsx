@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { registrarUltimoContato } from "@/services/contatos";
 import { listarFunil, type EtapaFunil } from "@/services/funil";
 
 interface Cliente {
@@ -345,7 +346,11 @@ export default function ClientesPage() {
           "Erro ao registrar envio no histórico:",
           error
         );
+
+        return;
       }
+
+      await registrarUltimoContato(clienteId, user.id);
     } catch (error) {
       console.error("Erro ao registrar envio no histórico:", error);
     }

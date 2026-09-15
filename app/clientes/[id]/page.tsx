@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { criarCompromisso } from "@/services/agenda";
+import { registrarUltimoContato } from "@/services/contatos";
 import { ImovelSearchSelect } from "@/components/imoveis/ImovelSearchSelect";
 import type { ImovelSelecao } from "@/services/imoveis";
 
@@ -1040,10 +1041,10 @@ export default function ClienteDetalhesPage() {
       const { error: clienteError } = await supabase
         .from("clientes")
         .update({
-          ultimo_contato: agora,
           proximo_contato: proximoContato
             ? new Date(proximoContato).toISOString()
             : null,
+          updated_at: agora,
         })
         .eq("id", cliente.id)
         .eq("user_id", user.id);
@@ -1060,6 +1061,8 @@ export default function ClienteDetalhesPage() {
 
         return;
       }
+
+      await registrarUltimoContato(cliente.id, user.id, agora);
 
       setDescricaoContato("");
       setProximoContato("");

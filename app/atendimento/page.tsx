@@ -7,6 +7,7 @@ import {
   type AtendimentoItem,
   type PrioridadeAtendimento,
 } from "@/services/atendimento";
+import { registrarContatoCliente } from "@/services/contatos";
 import type { EtapaFunil } from "@/services/funil";
 
 type EtapaFiltro = Exclude<EtapaFunil, "Fechado"> | "Todas";
@@ -113,7 +114,13 @@ function ResumoCard({
   );
 }
 
-function AtendimentoCard({ item }: { item: AtendimentoItem }) {
+function AtendimentoCard({
+  item,
+  onRegistrarContato,
+}: {
+  item: AtendimentoItem;
+  onRegistrarContato: (item: AtendimentoItem) => void;
+}) {
   const whatsapp = linkWhatsApp(item.telefone);
 
   return (
@@ -175,6 +182,14 @@ function AtendimentoCard({ item }: { item: AtendimentoItem }) {
         </div>
 
         <div className="flex flex-wrap gap-2 lg:justify-end">
+          <button
+            type="button"
+            onClick={() => onRegistrarContato(item)}
+            className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 transition hover:bg-gray-50"
+          >
+            Registrar contato
+          </button>
+
           <Link
             href={`/clientes/${item.id}`}
             className="inline-flex items-center justify-center rounded-lg bg-gray-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
@@ -211,20 +226,82 @@ export default function AtendimentoPage() {
   const [etapa, setEtapa] = useState<EtapaFiltro>("Todas");
   const [prioridade, setPrioridade] =
     useState<PrioridadeFiltro>("Todas");
+  const [clienteContato, setClienteContato] =
+    useState<AtendimentoItem | null>(null);
+  const [descricaoContato, setDescricaoContato] = useState("");
+  const [proximoContato, setProximoContato] = useState("");
+  const [salvandoContato, setSalvandoContato] = useState(false);
+  const [mensagem, setMensagem] = useState("");
+  const [erro, setErro] = useState("");
+
+  async function carregarAtendimento() {
+    setCarregando(true);
+
+    try {
+      const dados = await listarAtendimento();
+      setResumo(dados.resumo);
+      setItens(dados.itens);
+    } finally {
+      setCarregando(false);
+    }
+  }
 
   useEffect(() => {
-    async function carregar() {
-      try {
-        const dados = await listarAtendimento();
-        setResumo(dados.resumo);
-        setItens(dados.itens);
-      } finally {
-        setCarregando(false);
-      }
+    void carregarAtendimento();
+  }, []);
+
+  function abrirFormularioContato(item: AtendimentoItem) {
+    setClienteContato(item);
+    setDescricaoContato("");
+    setProximoContato("");
+    setErro("");
+    setMensagem("");
+  }
+
+  function fecharFormularioContato() {
+    if (salvandoContato) return;
+
+    setClienteContato(null);
+    setDescricaoContato("");
+    setProximoContato("");
+    setErro("");
+  }
+
+  async function salvarContato() {
+    if (!clienteContato) return;
+
+    if (!descricaoContato.trim()) {
+      setErro("Digite uma observação sobre o contato.");
+      return;
     }
 
-    carregar();
-  }, []);
+    setSalvandoContato(true);
+    setErro("");
+    setMensagem("");
+
+    try {
+      await registrarContatoCliente({
+        clienteId: clienteContato.id,
+        descricao: descricaoContato,
+        proximoContato,
+      });
+
+      setClienteContato(null);
+      setDescricaoContato("");
+      setProximoContato("");
+      setMensagem("Contato registrado com sucesso.");
+      await carregarAtendimento();
+    } catch (error) {
+      setErro(
+        error instanceof Error
+          ? error.message
+          : "Erro ao registrar contato."
+      );
+      await carregarAtendimento();
+    } finally {
+      setSalvandoContato(false);
+    }
+  }
 
   const itensFiltrados = useMemo(() => {
     const termo = normalizarBusca(busca);
@@ -370,10 +447,87 @@ export default function AtendimentoPage() {
 
         <div className="space-y-4">
           {itensFiltrados.map((item) => (
-            <AtendimentoCard key={item.id} item={item} />
+            <AtendimentoCard
+              key={item.id}
+              item={item}
+              onRegistrarContato={abrirFormularioContato}
+            />
           ))}
         </div>
       </section>
+
+      {mensagem ? (
+        <div className="fixed bottom-4 right-4 z-50 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg">
+          {mensagem}
+        </div>
+      ) : null}
+
+      {clienteContato ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 px-4 py-6">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl">
+            <div className="mb-5">
+              <p className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Registrar contato
+              </p>
+              <h2 className="mt-1 text-xl font-bold text-gray-950">
+                {clienteContato.nome}
+              </h2>
+            </div>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-gray-700">
+                Observação do contato
+              </span>
+              <textarea
+                value={descricaoContato}
+                onChange={(event) =>
+                  setDescricaoContato(event.target.value)
+                }
+                placeholder="Cliente pediu retorno sexta-feira."
+                className="mt-2 min-h-28 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-gray-950 focus:ring-2 focus:ring-gray-950/10"
+              />
+            </label>
+
+            <label className="mt-4 block">
+              <span className="text-sm font-semibold text-gray-700">
+                Próximo contato
+              </span>
+              <input
+                type="datetime-local"
+                value={proximoContato}
+                onChange={(event) => setProximoContato(event.target.value)}
+                className="mt-2 h-11 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none transition focus:border-gray-950 focus:ring-2 focus:ring-gray-950/10"
+              />
+            </label>
+
+            {erro ? (
+              <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                {erro}
+              </p>
+            ) : null}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={fecharFormularioContato}
+                disabled={salvandoContato}
+                className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-800 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={salvarContato}
+                disabled={salvandoContato}
+                className="inline-flex h-11 items-center justify-center rounded-lg bg-gray-950 px-4 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {salvandoContato ? "Salvando..." : "Salvar contato"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

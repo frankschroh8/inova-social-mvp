@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { criarCompromisso } from "@/services/agenda";
-import { registrarUltimoContato } from "@/services/contatos";
+import { registrarContatoCliente } from "@/services/contatos";
 import { ImovelSearchSelect } from "@/components/imoveis/ImovelSearchSelect";
 import type { ImovelSelecao } from "@/services/imoveis";
 
@@ -1005,64 +1005,11 @@ export default function ClienteDetalhesPage() {
     setSalvandoContato(true);
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        alert("Usuário não está logado.");
-        return;
-      }
-
-      const agora = new Date().toISOString();
-
-      const { error: historicoError } = await supabase
-        .from("historico")
-        .insert({
-          cliente_id: cliente.id,
-          usuario_id: user.id,
-          tipo: "contato",
-          descricao: descricaoContato.trim(),
-        });
-
-      if (historicoError) {
-        console.error(
-          "Erro ao registrar histórico:",
-          historicoError
-        );
-
-        alert(
-          `Erro ao registrar contato: ${historicoError.message}`
-        );
-
-        return;
-      }
-
-      const { error: clienteError } = await supabase
-        .from("clientes")
-        .update({
-          proximo_contato: proximoContato
-            ? new Date(proximoContato).toISOString()
-            : null,
-          updated_at: agora,
-        })
-        .eq("id", cliente.id)
-        .eq("user_id", user.id);
-
-      if (clienteError) {
-        console.error(
-          "Erro ao atualizar cliente:",
-          clienteError
-        );
-
-        alert(
-          `Contato salvo, mas houve erro ao atualizar a data: ${clienteError.message}`
-        );
-
-        return;
-      }
-
-      await registrarUltimoContato(cliente.id, user.id, agora);
+      await registrarContatoCliente({
+        clienteId: cliente.id,
+        descricao: descricaoContato,
+        proximoContato,
+      });
 
       setDescricaoContato("");
       setProximoContato("");

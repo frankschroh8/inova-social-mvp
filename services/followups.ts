@@ -1,4 +1,8 @@
 import { supabase } from "@/lib/supabase";
+import {
+  calcularDiferencaDiasBrasil,
+  calcularDiasDesdeBrasil,
+} from "@/services/regrasAtendimento";
 
 export type SituacaoFollowUp = "atrasado" | "hoje" | "proximo";
 
@@ -10,68 +14,18 @@ export interface FollowUpOperacional {
   situacao: SituacaoFollowUp;
 }
 
-interface DataBrasil {
-  ano: number;
-  mes: number;
-  dia: number;
-}
-
-const UM_DIA_MS = 24 * 60 * 60 * 1000;
-
-function dataNoBrasil(data: Date): DataBrasil | null {
-  if (Number.isNaN(data.getTime())) {
-    return null;
-  }
-
-  const partes = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(data);
-
-  const ano = Number(partes.find((parte) => parte.type === "year")?.value);
-  const mes = Number(partes.find((parte) => parte.type === "month")?.value);
-  const dia = Number(partes.find((parte) => parte.type === "day")?.value);
-
-  if (!ano || !mes || !dia) {
-    return null;
-  }
-
-  return { ano, mes, dia };
-}
-
-function diasEntreDatasBrasil(alvo: DataBrasil, referencia: DataBrasil) {
-  const alvoUtc = Date.UTC(alvo.ano, alvo.mes - 1, alvo.dia);
-  const referenciaUtc = Date.UTC(
-    referencia.ano,
-    referencia.mes - 1,
-    referencia.dia
-  );
-
-  return Math.round((alvoUtc - referenciaUtc) / UM_DIA_MS);
-}
+export { calcularDiferencaDiasBrasil, calcularDiasDesdeBrasil };
 
 export function classificarFollowUp(
   proximoContato: string | null | undefined,
   referencia = new Date()
 ): SituacaoFollowUp | null {
-  if (!proximoContato) {
-    return null;
-  }
-
-  const dataContato = new Date(proximoContato);
-  const contatoBrasil = dataNoBrasil(dataContato);
-  const referenciaBrasil = dataNoBrasil(referencia);
-
-  if (!contatoBrasil || !referenciaBrasil) {
-    return null;
-  }
-
-  const diferencaDias = diasEntreDatasBrasil(
-    contatoBrasil,
-    referenciaBrasil
+  const diferencaDias = calcularDiferencaDiasBrasil(
+    proximoContato,
+    referencia
   );
+
+  if (diferencaDias === null) return null;
 
   if (diferencaDias < 0) {
     return "atrasado";

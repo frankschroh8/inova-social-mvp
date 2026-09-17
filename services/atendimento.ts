@@ -4,11 +4,13 @@ import {
   type SituacaoFollowUp,
 } from "@/services/followups";
 import { listarFunil, type EtapaFunil } from "@/services/funil";
+import { avaliarClienteEsfriando } from "@/services/regrasAtendimento";
 
 export type PrioridadeAtendimento = "Alta" | "Média" | "Normal";
 export type GrupoAtendimento =
   | "atrasado"
   | "hoje"
+  | "esfriando"
   | "sem_proximo_contato"
   | "proximo";
 
@@ -22,11 +24,13 @@ export interface AtendimentoItem {
   prioridade: PrioridadeAtendimento;
   motivo: string;
   grupo: GrupoAtendimento;
+  diasSemContato: number | null;
 }
 
 export interface AtendimentoResumo {
   atrasados: number;
   hoje: number;
+  esfriando: number;
   semProximoContato: number;
   proximos7Dias: number;
 }
@@ -50,8 +54,9 @@ const prioridadePeso: Record<PrioridadeAtendimento, number> = {
 const grupoPeso: Record<GrupoAtendimento, number> = {
   atrasado: 0,
   hoje: 1,
-  sem_proximo_contato: 2,
-  proximo: 3,
+  esfriando: 2,
+  sem_proximo_contato: 3,
+  proximo: 4,
 };
 
 function prioridadeSemProximoContato(etapa: EtapaFunil) {
@@ -137,6 +142,7 @@ export async function listarAtendimento() {
       resumo: {
         atrasados: 0,
         hoje: 0,
+        esfriando: 0,
         semProximoContato: 0,
         proximos7Dias: 0,
       },
@@ -155,6 +161,7 @@ export async function listarAtendimento() {
       resumo: {
         atrasados: 0,
         hoje: 0,
+        esfriando: 0,
         semProximoContato: 0,
         proximos7Dias: 0,
       },
@@ -176,6 +183,7 @@ export async function listarAtendimento() {
       resumo: {
         atrasados: 0,
         hoje: 0,
+        esfriando: 0,
         semProximoContato: 0,
         proximos7Dias: 0,
       },
@@ -196,6 +204,11 @@ export async function listarAtendimento() {
       if (!contato || lead.etapa === "Fechado") return null;
 
       const situacao = classificarFollowUp(contato.proximo_contato);
+      const esfriamento = avaliarClienteEsfriando({
+        etapa: lead.etapa,
+        ultimoContato: contato.ultimo_contato,
+        proximoContato: contato.proximo_contato,
+      });
 
       if (situacao) {
         const classificacao = prioridadeComFollowUp(situacao);
@@ -210,6 +223,7 @@ export async function listarAtendimento() {
           prioridade: classificacao.prioridade,
           motivo: classificacao.motivo,
           grupo: classificacao.grupo,
+          diasSemContato: esfriamento.diasSemContato,
         };
       }
 
@@ -218,6 +232,18 @@ export async function listarAtendimento() {
       }
 
       const semProximo = prioridadeSemProximoContato(lead.etapa);
+      const prioridade = esfriamento.esfriando
+        ? semProximo.prioridade === "Alta"
+          ? "Alta"
+          : "Média"
+        : semProximo.prioridade;
+      const grupo = esfriamento.esfriando
+        ? "esfriando"
+        : "sem_proximo_contato";
+      const motivo =
+        esfriamento.esfriando && esfriamento.diasSemContato !== null
+          ? `Cliente esfriando — ${esfriamento.diasSemContato} dias sem contato`
+          : semProximo.motivo;
 
       return {
         id: lead.id,
@@ -226,9 +252,10 @@ export async function listarAtendimento() {
         etapa: lead.etapa,
         ultimo_contato: contato.ultimo_contato,
         proximo_contato: null,
-        prioridade: semProximo.prioridade,
-        motivo: semProximo.motivo,
-        grupo: "sem_proximo_contato" as const,
+        prioridade,
+        motivo,
+        grupo,
+        diasSemContato: esfriamento.diasSemContato,
       };
     })
     .filter(Boolean) as AtendimentoItem[];
@@ -239,6 +266,7 @@ export async function listarAtendimento() {
     resumo: {
       atrasados: itens.filter((item) => item.grupo === "atrasado").length,
       hoje: itens.filter((item) => item.grupo === "hoje").length,
+      esfriando: itens.filter((item) => item.grupo === "esfriando").length,
       semProximoContato: itens.filter(
         (item) => item.grupo === "sem_proximo_contato"
       ).length,

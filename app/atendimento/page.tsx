@@ -218,6 +218,7 @@ export default function AtendimentoPage() {
   const [resumo, setResumo] = useState({
     atrasados: 0,
     hoje: 0,
+    esfriando: 0,
     semProximoContato: 0,
     proximos7Dias: 0,
   });
@@ -337,13 +338,14 @@ export default function AtendimentoPage() {
         </p>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <ResumoCard
           titulo="Atrasados"
           valor={resumo.atrasados}
           destaque
         />
         <ResumoCard titulo="Hoje" valor={resumo.hoje} />
+        <ResumoCard titulo="Esfriando" valor={resumo.esfriando} />
         <ResumoCard
           titulo="Sem próximo contato"
           valor={resumo.semProximoContato}

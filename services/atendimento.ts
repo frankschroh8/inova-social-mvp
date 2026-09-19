@@ -4,7 +4,10 @@ import {
   type SituacaoFollowUp,
 } from "@/services/followups";
 import { listarFunil, type EtapaFunil } from "@/services/funil";
-import { avaliarClienteEsfriando } from "@/services/regrasAtendimento";
+import {
+  avaliarClienteEsfriando,
+  obterLimitesDiaBrasil,
+} from "@/services/regrasAtendimento";
 
 export type PrioridadeAtendimento = "Alta" | "Média" | "Normal";
 export type GrupoAtendimento =
@@ -33,6 +36,26 @@ export interface AtendimentoResumo {
   esfriando: number;
   semProximoContato: number;
   proximos7Dias: number;
+  agendaHoje: number;
+}
+
+export interface AgendaHojeItem {
+  id: string;
+  cliente_id: string | null;
+  cliente_nome: string | null;
+  titulo: string;
+  descricao: string | null;
+  data_inicio: string;
+  status: "agendado" | "reagendado";
+}
+
+interface AgendaHojeBanco {
+  id: string;
+  cliente_id: string | null;
+  titulo: string | null;
+  descricao: string | null;
+  data_inicio: string | null;
+  status: string | null;
 }
 
 interface ClienteContato {
@@ -132,6 +155,80 @@ function ordenarAtendimento(a: AtendimentoItem, b: AtendimentoItem) {
   return dataOrdenacao(a) - dataOrdenacao(b);
 }
 
+async function listarAgendaHoje(userId: string) {
+  const { inicio, fimExclusivo } = obterLimitesDiaBrasil();
+  const { data, error } = await supabase
+    .from("agenda")
+    .select(`
+      id,
+      cliente_id,
+      titulo,
+      descricao,
+      data_inicio,
+      status
+    `)
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .in("status", ["agendado", "reagendado"])
+    .gte("data_inicio", inicio)
+    .lt("data_inicio", fimExclusivo)
+    .order("data_inicio", { ascending: true });
+
+  if (error) {
+    console.error("Erro na consulta principal da agenda de hoje:", error);
+    return [] as AgendaHojeItem[];
+  }
+
+  const compromissos = ((data || []) as AgendaHojeBanco[])
+    .filter(
+      (item) =>
+        item.data_inicio &&
+        item.titulo &&
+        (item.status === "agendado" || item.status === "reagendado")
+    );
+  const clienteIds = Array.from(
+    new Set(
+      compromissos
+        .map((item) => item.cliente_id)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  const clientesPorId = new Map<string, string>();
+
+  if (clienteIds.length > 0) {
+    const { data: clientes, error: clientesError } = await supabase
+      .from("clientes")
+      .select("id, nome")
+      .eq("user_id", userId)
+      .is("deleted_at", null)
+      .in("id", clienteIds);
+
+    if (clientesError) {
+      console.error(
+        "Erro ao carregar clientes da agenda de hoje:",
+        clientesError
+      );
+    } else {
+      (clientes || []).forEach((cliente) => {
+        clientesPorId.set(cliente.id, cliente.nome);
+      });
+    }
+  }
+
+  return compromissos
+    .map((item) => ({
+      id: item.id,
+      cliente_id: item.cliente_id,
+      cliente_nome: item.cliente_id
+        ? clientesPorId.get(item.cliente_id) || null
+        : null,
+      titulo: item.titulo as string,
+      descricao: item.descricao,
+      data_inicio: item.data_inicio as string,
+      status: item.status as "agendado" | "reagendado",
+    }));
+}
+
 export async function listarAtendimento() {
   const {
     data: { user },
@@ -145,12 +242,17 @@ export async function listarAtendimento() {
         esfriando: 0,
         semProximoContato: 0,
         proximos7Dias: 0,
+        agendaHoje: 0,
       },
       itens: [] as AtendimentoItem[],
+      agendaHoje: [] as AgendaHojeItem[],
     };
   }
 
-  const funil = await listarFunil();
+  const [funil, agendaHoje] = await Promise.all([
+    listarFunil(),
+    listarAgendaHoje(user.id),
+  ]);
   const leadsOperacionais = funil.filter(
     (lead) => lead.etapa !== "Fechado"
   );
@@ -164,8 +266,10 @@ export async function listarAtendimento() {
         esfriando: 0,
         semProximoContato: 0,
         proximos7Dias: 0,
+        agendaHoje: agendaHoje.length,
       },
       itens: [] as AtendimentoItem[],
+      agendaHoje,
     };
   }
 
@@ -186,8 +290,10 @@ export async function listarAtendimento() {
         esfriando: 0,
         semProximoContato: 0,
         proximos7Dias: 0,
+        agendaHoje: agendaHoje.length,
       },
       itens: [] as AtendimentoItem[],
+      agendaHoje,
     };
   }
 
@@ -271,7 +377,9 @@ export async function listarAtendimento() {
         (item) => item.grupo === "sem_proximo_contato"
       ).length,
       proximos7Dias: itens.filter((item) => item.grupo === "proximo").length,
+      agendaHoje: agendaHoje.length,
     },
     itens,
+    agendaHoje,
   };
 }

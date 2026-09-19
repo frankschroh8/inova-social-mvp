@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   listarAtendimento,
+  type AgendaHojeItem,
   type AtendimentoItem,
   type PrioridadeAtendimento,
 } from "@/services/atendimento";
@@ -213,14 +214,67 @@ function AtendimentoCard({
   );
 }
 
+function formatarHorario(data: string) {
+  return new Date(data).toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function AgendaHojeCard({ item }: { item: AgendaHojeItem }) {
+  return (
+    <article className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <strong className="text-lg text-gray-950">
+              {formatarHorario(item.data_inicio)}
+            </strong>
+            <h3 className="min-w-0 font-semibold text-gray-900">
+              {item.titulo}
+            </h3>
+            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700">
+              {item.status === "reagendado" ? "Reagendado" : "Agendado"}
+            </span>
+          </div>
+
+          {item.cliente_nome ? (
+            <p className="mt-2 text-sm font-medium text-gray-700">
+              {item.cliente_nome}
+            </p>
+          ) : null}
+
+          {item.descricao ? (
+            <p className="mt-1 line-clamp-2 text-sm text-gray-500">
+              {item.descricao}
+            </p>
+          ) : null}
+        </div>
+
+        {item.cliente_id ? (
+          <Link
+            href={`/clientes/${item.cliente_id}`}
+            className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-gray-950 px-4 text-sm font-semibold text-white transition hover:bg-gray-800"
+          >
+            Abrir cliente
+          </Link>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 export default function AtendimentoPage() {
   const [itens, setItens] = useState<AtendimentoItem[]>([]);
+  const [agendaHoje, setAgendaHoje] = useState<AgendaHojeItem[]>([]);
   const [resumo, setResumo] = useState({
     atrasados: 0,
     hoje: 0,
     esfriando: 0,
     semProximoContato: 0,
     proximos7Dias: 0,
+    agendaHoje: 0,
   });
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
@@ -242,6 +296,7 @@ export default function AtendimentoPage() {
       const dados = await listarAtendimento();
       setResumo(dados.resumo);
       setItens(dados.itens);
+      setAgendaHoje(dados.agendaHoje);
     } finally {
       setCarregando(false);
     }
@@ -338,7 +393,7 @@ export default function AtendimentoPage() {
         </p>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <ResumoCard
           titulo="Atrasados"
           valor={resumo.atrasados}
@@ -354,6 +409,7 @@ export default function AtendimentoPage() {
           titulo="Próximos 7 dias"
           valor={resumo.proximos7Dias}
         />
+        <ResumoCard titulo="Agenda hoje" valor={resumo.agendaHoje} />
       </section>
 
       <section className="mt-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -455,6 +511,40 @@ export default function AtendimentoPage() {
               onRegistrarContato={abrirFormularioContato}
             />
           ))}
+        </div>
+      </section>
+
+      <section className="mt-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-950">
+              Agenda de hoje
+            </h2>
+            <p className="text-sm text-gray-500">
+              Compromissos ativos programados para o dia.
+            </p>
+          </div>
+
+          <Link
+            href="/agenda"
+            className="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-800 transition hover:bg-gray-50"
+          >
+            Abrir Agenda
+          </Link>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {carregando ? (
+            <p className="text-sm text-gray-500">Carregando agenda...</p>
+          ) : agendaHoje.length === 0 ? (
+            <p className="rounded-lg bg-gray-50 px-4 py-5 text-sm text-gray-500">
+              Não há compromissos agendados para hoje.
+            </p>
+          ) : (
+            agendaHoje.map((item) => (
+              <AgendaHojeCard key={item.id} item={item} />
+            ))
+          )}
         </div>
       </section>
 

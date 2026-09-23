@@ -37,6 +37,20 @@ export interface AtendimentoResumo {
   semProximoContato: number;
   proximos7Dias: number;
   agendaHoje: number;
+  negociacoes: number;
+}
+
+export interface NegociacaoAtencaoItem {
+  id: string;
+  cliente_id: string | null;
+  cliente_nome: string;
+  imovel_id: string | null;
+  imovel_titulo: string;
+  imovel_codigo: string | null;
+  valor: number | null;
+  data_proposta: string | null;
+  status: "aceita";
+  tipoAtencao: "aguardando_fechamento" | "imovel_negociado";
 }
 
 export interface AgendaHojeItem {
@@ -64,6 +78,15 @@ interface ClienteContato {
   telefone: string | null;
   ultimo_contato: string | null;
   proximo_contato: string | null;
+}
+
+interface PropostaAceitaBanco {
+  id: string;
+  cliente_id: string | null;
+  imovel_id: string | null;
+  valor: number | null;
+  data_proposta: string | null;
+  status: string | null;
 }
 
 type LeadFunil = Awaited<ReturnType<typeof listarFunil>>[number];
@@ -229,6 +252,176 @@ async function listarAgendaHoje(userId: string) {
     }));
 }
 
+async function listarNegociacoesAtencao(userId: string) {
+  const { data: propostas, error: propostasError } = await supabase
+    .from("propostas")
+    .select("id, cliente_id, imovel_id, valor, data_proposta, status")
+    .eq("corretor_id", userId)
+    .is("deleted_at", null)
+    .eq("status", "aceita")
+    .order("data_proposta", { ascending: true });
+
+  if (propostasError) {
+    console.error(
+      "Erro ao carregar propostas aceitas da central de atendimento:",
+      propostasError
+    );
+    return [] as NegociacaoAtencaoItem[];
+  }
+
+  const propostasAceitas = (propostas || []) as PropostaAceitaBanco[];
+
+  if (propostasAceitas.length === 0) {
+    return [] as NegociacaoAtencaoItem[];
+  }
+
+  const propostaIds = propostasAceitas.map((proposta) => proposta.id);
+  const { data: negocios, error: negociosError } = await supabase
+    .from("negocios")
+    .select("proposta_id")
+    .eq("corretor_id", userId)
+    .is("deleted_at", null)
+    .in("proposta_id", propostaIds);
+
+  if (negociosError) {
+    console.error(
+      "Erro ao verificar negócios das propostas aceitas:",
+      negociosError
+    );
+    return [] as NegociacaoAtencaoItem[];
+  }
+
+  const propostasFechadas = new Set(
+    (negocios || [])
+      .map((negocio) => negocio.proposta_id)
+      .filter((id): id is string => Boolean(id))
+  );
+  const pendencias = propostasAceitas.filter(
+    (proposta) => !propostasFechadas.has(proposta.id)
+  );
+
+  if (pendencias.length === 0) {
+    return [] as NegociacaoAtencaoItem[];
+  }
+
+  const clienteIds = Array.from(
+    new Set(
+      pendencias
+        .map((proposta) => proposta.cliente_id)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  const imovelIds = Array.from(
+    new Set(
+      pendencias
+        .map((proposta) => proposta.imovel_id)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+
+  const [clientesResultado, imoveisResultado, negociosImoveisResultado] =
+    await Promise.all([
+    clienteIds.length > 0
+      ? supabase
+          .from("clientes")
+          .select("id, nome")
+          .eq("user_id", userId)
+          .is("deleted_at", null)
+          .in("id", clienteIds)
+      : Promise.resolve({ data: [], error: null }),
+    imovelIds.length > 0
+      ? supabase
+          .from("imoveis")
+          .select("id, titulo, codigo, status")
+          .eq("user_id", userId)
+          .is("deleted_at", null)
+          .in("id", imovelIds)
+      : Promise.resolve({ data: [], error: null }),
+    imovelIds.length > 0
+      ? supabase
+          .from("negocios")
+          .select("imovel_id")
+          .eq("corretor_id", userId)
+          .is("deleted_at", null)
+          .in("imovel_id", imovelIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (clientesResultado.error) {
+    console.error(
+      "Erro ao carregar clientes das negociações pendentes:",
+      clientesResultado.error
+    );
+  }
+
+  if (imoveisResultado.error) {
+    console.error(
+      "Erro ao carregar imóveis das negociações pendentes:",
+      imoveisResultado.error
+    );
+  }
+
+  if (negociosImoveisResultado.error) {
+    console.error(
+      "Erro ao verificar negócios dos imóveis das propostas pendentes:",
+      negociosImoveisResultado.error
+    );
+  }
+
+  const clientesPorId = new Map<string, string>();
+  const imoveisPorId = new Map<
+    string,
+    { titulo: string; codigo: string | null; status: string | null }
+  >();
+  const imoveisComNegocio = new Set<string>();
+
+  (clientesResultado.data || []).forEach((cliente) => {
+    clientesPorId.set(cliente.id, cliente.nome);
+  });
+  (imoveisResultado.data || []).forEach((imovel) => {
+    imoveisPorId.set(imovel.id, {
+      titulo: imovel.titulo,
+      codigo: imovel.codigo,
+      status: imovel.status,
+    });
+  });
+  (negociosImoveisResultado.data || []).forEach((negocio) => {
+    if (negocio.imovel_id) {
+      imoveisComNegocio.add(negocio.imovel_id);
+    }
+  });
+
+  return pendencias.map((proposta) => {
+    const imovel = proposta.imovel_id
+      ? imoveisPorId.get(proposta.imovel_id)
+      : null;
+    const statusImovel = (imovel?.status || "").toLowerCase();
+    const imovelJaNegociado =
+      statusImovel === "vendido" ||
+      statusImovel === "alugado" ||
+      Boolean(
+        proposta.imovel_id && imoveisComNegocio.has(proposta.imovel_id)
+      );
+
+    return {
+      id: proposta.id,
+      cliente_id: proposta.cliente_id,
+      cliente_nome: proposta.cliente_id
+        ? clientesPorId.get(proposta.cliente_id) || "Cliente não informado"
+        : "Cliente não informado",
+      imovel_id: proposta.imovel_id,
+      imovel_titulo: imovel?.titulo || "Imóvel não informado",
+      imovel_codigo: imovel?.codigo || null,
+      valor: proposta.valor,
+      data_proposta: proposta.data_proposta,
+      status: "aceita" as const,
+      tipoAtencao: imovelJaNegociado
+        ? ("imovel_negociado" as const)
+        : ("aguardando_fechamento" as const),
+    };
+  });
+}
+
 export async function listarAtendimento() {
   const {
     data: { user },
@@ -243,15 +436,18 @@ export async function listarAtendimento() {
         semProximoContato: 0,
         proximos7Dias: 0,
         agendaHoje: 0,
+        negociacoes: 0,
       },
       itens: [] as AtendimentoItem[],
       agendaHoje: [] as AgendaHojeItem[],
+      negociacoes: [] as NegociacaoAtencaoItem[],
     };
   }
 
-  const [funil, agendaHoje] = await Promise.all([
+  const [funil, agendaHoje, negociacoes] = await Promise.all([
     listarFunil(),
     listarAgendaHoje(user.id),
+    listarNegociacoesAtencao(user.id),
   ]);
   const leadsOperacionais = funil.filter(
     (lead) => lead.etapa !== "Fechado"
@@ -267,9 +463,11 @@ export async function listarAtendimento() {
         semProximoContato: 0,
         proximos7Dias: 0,
         agendaHoje: agendaHoje.length,
+        negociacoes: negociacoes.length,
       },
       itens: [] as AtendimentoItem[],
       agendaHoje,
+      negociacoes,
     };
   }
 
@@ -291,9 +489,11 @@ export async function listarAtendimento() {
         semProximoContato: 0,
         proximos7Dias: 0,
         agendaHoje: agendaHoje.length,
+        negociacoes: negociacoes.length,
       },
       itens: [] as AtendimentoItem[],
       agendaHoje,
+      negociacoes,
     };
   }
 
@@ -378,8 +578,10 @@ export async function listarAtendimento() {
       ).length,
       proximos7Dias: itens.filter((item) => item.grupo === "proximo").length,
       agendaHoje: agendaHoje.length,
+      negociacoes: negociacoes.length,
     },
     itens,
     agendaHoje,
+    negociacoes,
   };
 }

@@ -6,6 +6,7 @@ import {
   listarAtendimento,
   type AgendaHojeItem,
   type AtendimentoItem,
+  type NegociacaoAtencaoItem,
   type PrioridadeAtendimento,
 } from "@/services/atendimento";
 import { registrarContatoCliente } from "@/services/contatos";
@@ -265,9 +266,84 @@ function AgendaHojeCard({ item }: { item: AgendaHojeItem }) {
   );
 }
 
+function formatarMoeda(valor: number | null) {
+  if (valor === null || !Number.isFinite(valor)) return "Valor não informado";
+
+  return valor.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function NegociacaoAtencaoCard({
+  item,
+}: {
+  item: NegociacaoAtencaoItem;
+}) {
+  const imovelJaNegociado = item.tipoAtencao === "imovel_negociado";
+
+  return (
+    <article
+      className={`rounded-lg border bg-white p-4 ${
+        imovelJaNegociado ? "border-red-200" : "border-amber-200"
+      }`}
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <span
+            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+              imovelJaNegociado
+                ? "bg-red-50 text-red-700"
+                : "bg-amber-50 text-amber-700"
+            }`}
+          >
+            {imovelJaNegociado
+              ? "Imóvel já negociado — revisar proposta"
+              : "Aguardando fechamento"}
+          </span>
+
+          <h3 className="mt-3 break-words text-base font-semibold text-gray-950">
+            {item.cliente_nome}
+          </h3>
+          <p className="mt-1 break-words text-sm text-gray-700">
+            {item.imovel_titulo}
+            {item.imovel_codigo ? ` · Cód. ${item.imovel_codigo}` : ""}
+          </p>
+
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+            <strong className="text-gray-950">
+              {formatarMoeda(item.valor)}
+            </strong>
+            <span className="text-gray-500">
+              Proposta em {formatarData(item.data_proposta)}
+            </span>
+          </div>
+
+          {imovelJaNegociado ? (
+            <p className="mt-3 text-sm font-medium text-red-700">
+              Este imóvel já possui fechamento registrado. Revise a proposta
+              antes de qualquer nova ação.
+            </p>
+          ) : null}
+        </div>
+
+        {item.cliente_id ? (
+          <Link
+            href={`/clientes/${item.cliente_id}`}
+            className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-gray-950 px-4 text-sm font-semibold text-white transition hover:bg-gray-800"
+          >
+            Abrir cliente
+          </Link>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 export default function AtendimentoPage() {
   const [itens, setItens] = useState<AtendimentoItem[]>([]);
   const [agendaHoje, setAgendaHoje] = useState<AgendaHojeItem[]>([]);
+  const [negociacoes, setNegociacoes] = useState<NegociacaoAtencaoItem[]>([]);
   const [resumo, setResumo] = useState({
     atrasados: 0,
     hoje: 0,
@@ -275,6 +351,7 @@ export default function AtendimentoPage() {
     semProximoContato: 0,
     proximos7Dias: 0,
     agendaHoje: 0,
+    negociacoes: 0,
   });
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
@@ -297,6 +374,7 @@ export default function AtendimentoPage() {
       setResumo(dados.resumo);
       setItens(dados.itens);
       setAgendaHoje(dados.agendaHoje);
+      setNegociacoes(dados.negociacoes);
     } finally {
       setCarregando(false);
     }
@@ -393,7 +471,7 @@ export default function AtendimentoPage() {
         </p>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <ResumoCard
           titulo="Atrasados"
           valor={resumo.atrasados}
@@ -410,6 +488,7 @@ export default function AtendimentoPage() {
           valor={resumo.proximos7Dias}
         />
         <ResumoCard titulo="Agenda hoje" valor={resumo.agendaHoje} />
+        <ResumoCard titulo="Negociações" valor={resumo.negociacoes} />
       </section>
 
       <section className="mt-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -543,6 +622,33 @@ export default function AtendimentoPage() {
           ) : (
             agendaHoje.map((item) => (
               <AgendaHojeCard key={item.id} item={item} />
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="mt-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-xl font-bold text-gray-950">
+            Negociações que precisam de atenção
+          </h2>
+          <p className="text-sm text-gray-500">
+            Propostas aceitas que ainda aguardam fechamento.
+          </p>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {carregando ? (
+            <p className="text-sm text-gray-500">
+              Carregando negociações...
+            </p>
+          ) : negociacoes.length === 0 ? (
+            <p className="rounded-lg bg-gray-50 px-4 py-5 text-sm text-gray-500">
+              Nenhuma proposta aceita aguardando fechamento.
+            </p>
+          ) : (
+            negociacoes.map((item) => (
+              <NegociacaoAtencaoCard key={item.id} item={item} />
             ))
           )}
         </div>

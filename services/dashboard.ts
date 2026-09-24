@@ -197,10 +197,7 @@ export async function getDashboardData() {
           cliente_id,
           tipo,
           descricao,
-          created_at,
-          clientes (
-            nome
-          )
+          created_at
         `)
         .in("cliente_id", clienteIds)
         .order("created_at", { ascending: false })
@@ -214,16 +211,12 @@ export async function getDashboardData() {
           titulo,
           descricao,
           data_inicio,
-          status,
-          clientes (
-            nome,
-            telefone
-          )
+          status
         `)
         .eq("user_id", user.id)
         .in("cliente_id", clienteIds)
         .is("deleted_at", null)
-        .neq("status", "concluido")
+        .in("status", ["agendado", "reagendado"])
         .gte("data_inicio", new Date().toISOString())
         .order("data_inicio", { ascending: true })
         .limit(6),
@@ -268,14 +261,24 @@ export async function getDashboardData() {
   if (historicoError) {
     console.error(
       "Erro ao carregar atividades recentes do dashboard:",
-      historicoError
+      {
+        message: historicoError.message,
+        code: historicoError.code,
+        details: historicoError.details,
+        hint: historicoError.hint,
+      }
     );
   }
 
   if (agendaError) {
     console.error(
       "Erro ao carregar próximas visitas do dashboard:",
-      agendaError
+      {
+        message: agendaError.message,
+        code: agendaError.code,
+        details: agendaError.details,
+        hint: agendaError.hint,
+      }
     );
   }
 
@@ -290,6 +293,33 @@ export async function getDashboardData() {
     etapa,
     total: funil.filter((cliente) => cliente.etapa === etapa).length,
   }));
+  const clientesPorId = new Map(
+    funil.map((cliente) => [
+      cliente.id,
+      {
+        nome: cliente.nome || "Cliente não informado",
+        telefone: cliente.telefone || null,
+      },
+    ])
+  );
+  const atividadesRecentesComClientes = (atividadesRecentes || []).map(
+    (atividade) => ({
+      ...atividade,
+      clientes: clientesPorId.get(atividade.cliente_id) || {
+        nome: "Cliente não informado",
+        telefone: null,
+      },
+    })
+  );
+  const proximasVisitasComClientes = (proximasVisitas || []).map(
+    (visita) => ({
+      ...visita,
+      clientes: clientesPorId.get(visita.cliente_id) || {
+        nome: "Cliente não informado",
+        telefone: null,
+      },
+    })
+  );
 
   const matchesAtivos = matches?.length || 0;
   const clientesComMatch = new Set(
@@ -398,8 +428,8 @@ export async function getDashboardData() {
       propostaSobreVisitas: percentual(propostas, visitasAgendadas),
       fechamentoSobrePropostas: percentual(fechados, propostas),
     },
-    atividadesRecentes: atividadesRecentes || [],
-    proximasVisitas: proximasVisitas || [],
+    atividadesRecentes: atividadesRecentesComClientes,
+    proximasVisitas: proximasVisitasComClientes,
     followUps,
     resultadosComerciais,
     resumoFunil,

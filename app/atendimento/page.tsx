@@ -14,6 +14,22 @@ import type { EtapaFunil } from "@/services/funil";
 
 type EtapaFiltro = Exclude<EtapaFunil, "Fechado"> | "Todas";
 type PrioridadeFiltro = PrioridadeAtendimento | "Todas";
+type TipoPrioridadeHoje =
+  | "negociacao_inconsistente"
+  | "negociacao_fechamento"
+  | "follow_up_atrasado"
+  | "follow_up_hoje"
+  | "agenda"
+  | "esfriando";
+
+interface PrioridadeHojeItem {
+  chave: string;
+  clienteId: string | null;
+  nome: string;
+  motivo: string;
+  detalhe: string | null;
+  tipo: TipoPrioridadeHoje;
+}
 
 const etapasFiltro: EtapaFiltro[] = [
   "Todas",
@@ -340,6 +356,62 @@ function NegociacaoAtencaoCard({
   );
 }
 
+function classePrioridadeHoje(tipo: TipoPrioridadeHoje) {
+  if (tipo === "negociacao_inconsistente") {
+    return "bg-red-50 text-red-700";
+  }
+
+  if (tipo === "negociacao_fechamento") {
+    return "bg-amber-50 text-amber-700";
+  }
+
+  if (tipo === "follow_up_atrasado") {
+    return "bg-orange-50 text-orange-700";
+  }
+
+  if (tipo === "follow_up_hoje" || tipo === "agenda") {
+    return "bg-sky-50 text-sky-700";
+  }
+
+  return "bg-violet-50 text-violet-700";
+}
+
+function PrioridadeHojeCard({ item }: { item: PrioridadeHojeItem }) {
+  return (
+    <article className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <strong className="break-words text-gray-950">{item.nome}</strong>
+            <span
+              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${classePrioridadeHoje(
+                item.tipo
+              )}`}
+            >
+              {item.motivo}
+            </span>
+          </div>
+
+          {item.detalhe ? (
+            <p className="mt-2 break-words text-sm text-gray-600">
+              {item.detalhe}
+            </p>
+          ) : null}
+        </div>
+
+        {item.clienteId ? (
+          <Link
+            href={`/clientes/${item.clienteId}`}
+            className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-800 transition hover:bg-gray-50"
+          >
+            Abrir cliente
+          </Link>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 export default function AtendimentoPage() {
   const [itens, setItens] = useState<AtendimentoItem[]>([]);
   const [agendaHoje, setAgendaHoje] = useState<AgendaHojeItem[]>([]);
@@ -453,6 +525,113 @@ export default function AtendimentoPage() {
     });
   }, [busca, etapa, itens, prioridade]);
 
+  const prioridadesHoje = useMemo(() => {
+    const candidatos: PrioridadeHojeItem[] = [];
+
+    negociacoes
+      .filter((item) => item.tipoAtencao === "imovel_negociado")
+      .forEach((item) => {
+        candidatos.push({
+          chave: item.cliente_id
+            ? `cliente:${item.cliente_id}`
+            : `negociacao:${item.id}`,
+          clienteId: item.cliente_id,
+          nome: item.cliente_nome,
+          motivo: "Imóvel já negociado — revisar proposta",
+          detalhe: `${item.imovel_titulo}${
+            item.imovel_codigo ? ` · Cód. ${item.imovel_codigo}` : ""
+          } · ${formatarMoeda(item.valor)}`,
+          tipo: "negociacao_inconsistente",
+        });
+      });
+
+    negociacoes
+      .filter((item) => item.tipoAtencao === "aguardando_fechamento")
+      .forEach((item) => {
+        candidatos.push({
+          chave: item.cliente_id
+            ? `cliente:${item.cliente_id}`
+            : `negociacao:${item.id}`,
+          clienteId: item.cliente_id,
+          nome: item.cliente_nome,
+          motivo: "Aguardando fechamento",
+          detalhe: `${item.imovel_titulo}${
+            item.imovel_codigo ? ` · Cód. ${item.imovel_codigo}` : ""
+          } · ${formatarMoeda(item.valor)}`,
+          tipo: "negociacao_fechamento",
+        });
+      });
+
+    itens
+      .filter((item) => item.grupo === "atrasado")
+      .forEach((item) => {
+        candidatos.push({
+          chave: `cliente:${item.id}`,
+          clienteId: item.id,
+          nome: item.nome,
+          motivo: item.motivo,
+          detalhe: item.proximo_contato
+            ? `Próximo contato: ${formatarData(item.proximo_contato)}`
+            : null,
+          tipo: "follow_up_atrasado",
+        });
+      });
+
+    itens
+      .filter((item) => item.grupo === "hoje")
+      .forEach((item) => {
+        candidatos.push({
+          chave: `cliente:${item.id}`,
+          clienteId: item.id,
+          nome: item.nome,
+          motivo: item.motivo,
+          detalhe: item.proximo_contato
+            ? `Próximo contato: ${formatarData(item.proximo_contato)}`
+            : null,
+          tipo: "follow_up_hoje",
+        });
+      });
+
+    agendaHoje.forEach((item) => {
+      candidatos.push({
+        chave: item.cliente_id
+          ? `cliente:${item.cliente_id}`
+          : `agenda:${item.id}`,
+        clienteId: item.cliente_id,
+        nome: item.cliente_nome || "Cliente não informado",
+        motivo: item.titulo,
+        detalhe: `Hoje às ${formatarHorario(item.data_inicio)}`,
+        tipo: "agenda",
+      });
+    });
+
+    itens
+      .filter((item) => item.grupo === "esfriando")
+      .forEach((item) => {
+        candidatos.push({
+          chave: `cliente:${item.id}`,
+          clienteId: item.id,
+          nome: item.nome,
+          motivo: item.motivo,
+          detalhe: item.ultimo_contato
+            ? `Último contato: ${formatarData(item.ultimo_contato)}`
+            : null,
+          tipo: "esfriando",
+        });
+      });
+
+    const chavesUsadas = new Set<string>();
+
+    return candidatos
+      .filter((item) => {
+        if (chavesUsadas.has(item.chave)) return false;
+
+        chavesUsadas.add(item.chave);
+        return true;
+      })
+      .slice(0, 5);
+  }, [agendaHoje, itens, negociacoes]);
+
   const semPendencias = !carregando && itens.length === 0;
   const filtrosSemResultado =
     !carregando && itens.length > 0 && itensFiltrados.length === 0;
@@ -489,6 +668,33 @@ export default function AtendimentoPage() {
         />
         <ResumoCard titulo="Agenda hoje" valor={resumo.agendaHoje} />
         <ResumoCard titulo="Negociações" valor={resumo.negociacoes} />
+      </section>
+
+      <section className="mt-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-xl font-bold text-gray-950">
+            Prioridades de hoje
+          </h2>
+          <p className="text-sm text-gray-500">
+            As ações mais importantes para começar o dia.
+          </p>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {carregando ? (
+            <p className="text-sm text-gray-500">
+              Carregando prioridades...
+            </p>
+          ) : prioridadesHoje.length === 0 ? (
+            <p className="rounded-lg bg-gray-50 px-4 py-5 text-sm text-gray-500">
+              Nenhuma prioridade imediata para hoje.
+            </p>
+          ) : (
+            prioridadesHoje.map((item) => (
+              <PrioridadeHojeCard key={item.chave} item={item} />
+            ))
+          )}
+        </div>
       </section>
 
       <section className="mt-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">

@@ -29,6 +29,7 @@ interface PrioridadeHojeItem {
   motivo: string;
   detalhe: string | null;
   tipo: TipoPrioridadeHoje;
+  atendimentoItem: AtendimentoItem | null;
 }
 
 const etapasFiltro: EtapaFiltro[] = [
@@ -376,7 +377,24 @@ function classePrioridadeHoje(tipo: TipoPrioridadeHoje) {
   return "bg-violet-50 text-violet-700";
 }
 
-function PrioridadeHojeCard({ item }: { item: PrioridadeHojeItem }) {
+function PrioridadeHojeCard({
+  item,
+  onRegistrarContato,
+}: {
+  item: PrioridadeHojeItem;
+  onRegistrarContato: (item: AtendimentoItem) => void;
+}) {
+  const whatsapp = item.atendimentoItem
+    ? linkWhatsApp(item.atendimentoItem.telefone)
+    : null;
+  const acaoNegociacao =
+    item.tipo === "negociacao_inconsistente"
+      ? "Revisar proposta"
+      : "Abrir negociação";
+  const ehNegociacao =
+    item.tipo === "negociacao_inconsistente" ||
+    item.tipo === "negociacao_fechamento";
+
   return (
     <article className="rounded-lg border border-gray-200 bg-white p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -399,14 +417,41 @@ function PrioridadeHojeCard({ item }: { item: PrioridadeHojeItem }) {
           ) : null}
         </div>
 
-        {item.clienteId ? (
-          <Link
-            href={`/clientes/${item.clienteId}`}
-            className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-800 transition hover:bg-gray-50"
-          >
-            Abrir cliente
-          </Link>
-        ) : null}
+        <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+          {item.atendimentoItem ? (
+            <button
+              type="button"
+              onClick={() => onRegistrarContato(item.atendimentoItem!)}
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-800 transition hover:bg-gray-50"
+            >
+              Registrar contato
+            </button>
+          ) : null}
+
+          {item.clienteId ? (
+            <Link
+              href={
+                ehNegociacao
+                  ? `/clientes/${item.clienteId}#propostas-cliente`
+                  : `/clientes/${item.clienteId}`
+              }
+              className="inline-flex h-10 items-center justify-center rounded-lg bg-gray-950 px-3 text-sm font-semibold text-white transition hover:bg-gray-800"
+            >
+              {ehNegociacao ? acaoNegociacao : "Abrir cliente"}
+            </Link>
+          ) : null}
+
+          {whatsapp ? (
+            <a
+              href={whatsapp}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+            >
+              WhatsApp
+            </a>
+          ) : null}
+        </div>
       </div>
     </article>
   );
@@ -542,6 +587,7 @@ export default function AtendimentoPage() {
             item.imovel_codigo ? ` · Cód. ${item.imovel_codigo}` : ""
           } · ${formatarMoeda(item.valor)}`,
           tipo: "negociacao_inconsistente",
+          atendimentoItem: null,
         });
       });
 
@@ -559,6 +605,7 @@ export default function AtendimentoPage() {
             item.imovel_codigo ? ` · Cód. ${item.imovel_codigo}` : ""
           } · ${formatarMoeda(item.valor)}`,
           tipo: "negociacao_fechamento",
+          atendimentoItem: null,
         });
       });
 
@@ -574,6 +621,7 @@ export default function AtendimentoPage() {
             ? `Próximo contato: ${formatarData(item.proximo_contato)}`
             : null,
           tipo: "follow_up_atrasado",
+          atendimentoItem: item,
         });
       });
 
@@ -589,6 +637,7 @@ export default function AtendimentoPage() {
             ? `Próximo contato: ${formatarData(item.proximo_contato)}`
             : null,
           tipo: "follow_up_hoje",
+          atendimentoItem: item,
         });
       });
 
@@ -602,6 +651,7 @@ export default function AtendimentoPage() {
         motivo: item.titulo,
         detalhe: `Hoje às ${formatarHorario(item.data_inicio)}`,
         tipo: "agenda",
+        atendimentoItem: null,
       });
     });
 
@@ -617,6 +667,7 @@ export default function AtendimentoPage() {
             ? `Último contato: ${formatarData(item.ultimo_contato)}`
             : null,
           tipo: "esfriando",
+          atendimentoItem: item,
         });
       });
 
@@ -691,7 +742,11 @@ export default function AtendimentoPage() {
             </p>
           ) : (
             prioridadesHoje.map((item) => (
-              <PrioridadeHojeCard key={item.chave} item={item} />
+              <PrioridadeHojeCard
+                key={item.chave}
+                item={item}
+                onRegistrarContato={abrirFormularioContato}
+              />
             ))
           )}
         </div>

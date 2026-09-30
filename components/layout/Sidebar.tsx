@@ -11,6 +11,7 @@ const menus = [
   { nome: "Agenda", link: "/agenda" },
   { nome: "Funil", link: "/funil" },
   { nome: "Negócios", link: "/negocios" },
+  { nome: "Pós-venda", link: "/pos-venda" },
   { nome: "Pesquisa de Mercado", link: "/pesquisa-mercado" },
 ];
 

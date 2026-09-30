@@ -11,6 +11,7 @@ const rotasComNavegacao = [
   "/agenda",
   "/funil",
   "/negocios",
+  "/pos-venda",
   "/pesquisa-mercado",
 ];
 

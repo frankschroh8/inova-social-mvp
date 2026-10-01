@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { registrarContatoCliente } from "@/services/contatos";
 import { listarPosVenda, type PosVendaItem } from "@/services/posVenda";
 
 function formatarMoeda(valor: number | string | null | undefined) {
@@ -48,29 +49,107 @@ function quantidadeNegocios(item: PosVendaItem) {
     : `${item.quantidadeNegocios} negócios fechados`;
 }
 
+function linkWhatsApp(telefone: string | null) {
+  if (!telefone) return null;
+
+  let numero = telefone.replace(/\D/g, "");
+
+  if (numero.length === 10 || numero.length === 11) {
+    numero = `55${numero}`;
+  }
+
+  if (!numero) return null;
+
+  const mensagem = encodeURIComponent("Olá, tudo bem?");
+
+  return `https://wa.me/${numero}?text=${mensagem}`;
+}
+
 export default function PosVendaPage() {
   const [itens, setItens] = useState<PosVendaItem[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState("");
+  const [erroCarregamento, setErroCarregamento] = useState("");
+  const [clienteContato, setClienteContato] = useState<PosVendaItem | null>(
+    null
+  );
+  const [descricaoContato, setDescricaoContato] = useState("");
+  const [proximoContato, setProximoContato] = useState("");
+  const [salvandoContato, setSalvandoContato] = useState(false);
+  const [erroContato, setErroContato] = useState("");
+  const [mensagem, setMensagem] = useState("");
+
+  async function carregarPosVenda() {
+    setCarregando(true);
+
+    try {
+      setErroCarregamento("");
+      setItens(await listarPosVenda());
+    } catch (error) {
+      setErroCarregamento(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível carregar o pós-venda."
+      );
+    } finally {
+      setCarregando(false);
+    }
+  }
 
   useEffect(() => {
-    async function carregar() {
-      try {
-        setErro("");
-        setItens(await listarPosVenda());
-      } catch (error) {
-        setErro(
-          error instanceof Error
-            ? error.message
-            : "Não foi possível carregar o pós-venda."
-        );
-      } finally {
-        setCarregando(false);
-      }
+    void carregarPosVenda();
+  }, []);
+
+  function abrirFormularioContato(item: PosVendaItem) {
+    setClienteContato(item);
+    setDescricaoContato("");
+    setProximoContato("");
+    setErroContato("");
+    setMensagem("");
+  }
+
+  function fecharFormularioContato() {
+    if (salvandoContato) return;
+
+    setClienteContato(null);
+    setDescricaoContato("");
+    setProximoContato("");
+    setErroContato("");
+  }
+
+  async function salvarContato() {
+    if (!clienteContato) return;
+
+    if (!descricaoContato.trim()) {
+      setErroContato("Digite uma observação sobre o contato.");
+      return;
     }
 
-    carregar();
-  }, []);
+    setSalvandoContato(true);
+    setErroContato("");
+    setMensagem("");
+
+    try {
+      await registrarContatoCliente({
+        clienteId: clienteContato.clienteId,
+        descricao: descricaoContato,
+        proximoContato,
+      });
+
+      setClienteContato(null);
+      setDescricaoContato("");
+      setProximoContato("");
+      setMensagem("Contato registrado com sucesso.");
+      await carregarPosVenda();
+    } catch (error) {
+      setErroContato(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível registrar o contato."
+      );
+    } finally {
+      setSalvandoContato(false);
+    }
+  }
 
   const indicadores = useMemo(() => {
     const estruturados = itens.filter(
@@ -129,9 +208,9 @@ export default function PosVendaPage() {
             <div className="rounded-lg border bg-white p-5 text-sm text-gray-500">
               Carregando pós-venda...
             </div>
-          ) : erro ? (
+          ) : erroCarregamento ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-              {erro}
+              {erroCarregamento}
             </div>
           ) : itens.length === 0 ? (
             <div className="rounded-lg border bg-white p-5 text-sm text-gray-500">
@@ -142,6 +221,7 @@ export default function PosVendaPage() {
               {itens.map((item) => {
                 const negocio = item.ultimoNegocio;
                 const valorFinal = formatarMoeda(negocio?.valorFinal);
+                const whatsapp = linkWhatsApp(item.telefone);
 
                 return (
                   <article
@@ -245,13 +325,32 @@ export default function PosVendaPage() {
                       </div>
                     </dl>
 
-                    <div className="mt-5 flex justify-end">
+                    <div className="mt-5 flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => abrirFormularioContato(item)}
+                        className="rounded-lg bg-gray-950 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                      >
+                        Registrar contato
+                      </button>
+
                       <Link
                         href={`/clientes/${item.clienteId}`}
                         className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-400"
                       >
                         Abrir cliente
                       </Link>
+
+                      {whatsapp ? (
+                        <a
+                          href={whatsapp}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
+                        >
+                          WhatsApp
+                        </a>
+                      ) : null}
                     </div>
                   </article>
                 );
@@ -260,6 +359,79 @@ export default function PosVendaPage() {
           )}
         </section>
       </div>
+
+      {mensagem ? (
+        <div className="fixed bottom-4 right-4 z-50 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg">
+          {mensagem}
+        </div>
+      ) : null}
+
+      {clienteContato ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 px-4 py-6">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl">
+            <div className="mb-5">
+              <p className="text-sm font-semibold uppercase text-gray-500">
+                Registrar contato
+              </p>
+              <h2 className="mt-1 text-xl font-bold text-gray-950">
+                {clienteContato.nome}
+              </h2>
+            </div>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-gray-700">
+                Descrição do contato
+              </span>
+              <textarea
+                value={descricaoContato}
+                onChange={(event) =>
+                  setDescricaoContato(event.target.value)
+                }
+                placeholder="Conversei com o cliente após o fechamento."
+                className="mt-2 min-h-28 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-950 focus:ring-2 focus:ring-gray-950/10"
+              />
+            </label>
+
+            <label className="mt-4 block">
+              <span className="text-sm font-semibold text-gray-700">
+                Próximo contato
+              </span>
+              <input
+                type="datetime-local"
+                value={proximoContato}
+                onChange={(event) => setProximoContato(event.target.value)}
+                className="mt-2 h-11 w-full rounded-lg border border-gray-300 px-3 text-sm outline-none focus:border-gray-950 focus:ring-2 focus:ring-gray-950/10"
+              />
+            </label>
+
+            {erroContato ? (
+              <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                {erroContato}
+              </p>
+            ) : null}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={fecharFormularioContato}
+                disabled={salvandoContato}
+                className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={salvarContato}
+                disabled={salvandoContato}
+                className="inline-flex h-11 items-center justify-center rounded-lg bg-gray-950 px-4 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {salvandoContato ? "Salvando..." : "Salvar contato"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
